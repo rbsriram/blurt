@@ -66,19 +66,32 @@ Windows, go for it, and a pull request that makes it feel native there is welcom
 
 ## Install
 
-First, [Ollama](https://ollama.com/download) (the local brain). Then Blurt itself,
-the easy way, with [pipx](https://pipx.pypa.io) and Python 3.11+:
+Blurt needs two free things on your machine first: **Ollama** (its local AI brain)
+and **Python 3.11+**.
+
+**1. Ollama.** Download it from [ollama.com/download](https://ollama.com/download)
+(or `brew install ollama` if you use Homebrew), then open it once so it is running.
+
+**2. Blurt**, the easy way, with [pipx](https://pipx.pypa.io):
 
 ```bash
 pipx install git+https://github.com/rbsriram/blurt
 blurt
 ```
 
+No `pipx`? Install it once, then run the two lines above in a new terminal:
+
+```bash
+brew install pipx && pipx ensurepath                          # macOS with Homebrew
+# or, without Homebrew:
+python3 -m pip install --user pipx && python3 -m pipx ensurepath
+```
+
 `blurt` opens it in its own desktop window, and on macOS it adds itself to your
 Applications, so after the first run you just double-click it like any app. The first
 run also pulls the embedding model (about 270MB, once). That is it.
 
-No pipx? Any of these also work:
+Other ways to install:
 
 ```bash
 pip install --user git+https://github.com/rbsriram/blurt && blurt   # plain pip
