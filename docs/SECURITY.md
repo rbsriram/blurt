@@ -16,6 +16,14 @@ bounded but real.
 Exposing it (`BLURT_HOST=0.0.0.0`) is an explicit, documented, discouraged
 opt-in. There is no auth yet, so do not do this on an untrusted network.
 
+**Host-header validation (anti-DNS-rebinding).** Even bound to localhost, a
+browser-based attack could try to reach the local API: a malicious page resolves
+its own domain to `127.0.0.1` and makes background requests. A middleware rejects
+(`403`) any request whose `Host` header is not a known localhost name (or the host
+the server was deliberately told to bind). The attacker's page sends its own
+domain as `Host`, so it is refused and cannot touch your notes. This is the main
+defense for a no-auth local web app.
+
 **XSS-safe rendering.** Note content is stored raw (verbatim) but rendered
 escape-first: the UI HTML-escapes the entire string before applying Markdown
 formatting, and only emits tags it constructs itself. Pasted `<script>`,
