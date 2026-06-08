@@ -711,3 +711,16 @@ broken `↑` afterward. New model:
   `install.sh` to match. Release ritual going forward: bump `pyproject` version, tag `vX.Y.Z`,
   cut the GitHub release, and bump `install.sh`'s `VERSION` pin in the same motion so the
   non-pip paths never go stale again.
+
+### 50. Fix the dock icon (Python rocket -> blurt) and drop the IP from the launch line (owner)
+- Launching `blurt` from a shell runs a bare Python process, so the dock showed the generic
+  Python rocket icon (and the hover label "Python"). `_brand_macos_app` already fixed the
+  *menu-bar* name via the in-memory bundle dict, but nothing set the *dock* icon. Added
+  `_set_dock_icon`: on the main thread, after the window is shown, load `assets/Blurt.icns`
+  and call `NSApplication.setApplicationIconImage_`. Double-clicking `blurt.app` was always
+  correct (real bundle); this only fixes the terminal-launch path. The hover *name* can still
+  read "Python" un-bundled (the Dock reads it from the on-disk bundle, not the in-memory
+  override); the icon is the visible fix and double-clicking the app avoids it entirely.
+- Dropped the `http://127.0.0.1:7337` from the "Starting Blurt ..." and "already running"
+  lines: a localhost IP printed at a non-coder reads as scary/technical for zero benefit
+  (browser mode opens the URL automatically anyway).

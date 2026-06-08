@@ -293,6 +293,7 @@ def _build_menu_bar(window) -> None:
         _menu_controller = controller  # pin it
 
         app = AppKit.NSApplication.sharedApplication()
+        _set_dock_icon(app)
         main = AppKit.NSMenu.alloc().init()
 
         def submenu(title):
@@ -426,6 +427,28 @@ def _save_geometry(geom: dict) -> None:
         path.write_text(json.dumps(geom))
     except Exception:
         pass  # losing window geometry is never worth failing a close over
+
+
+def _set_dock_icon(app) -> None:
+    """Replace the dock icon with blurt's own.
+
+    Launched from the terminal, blurt runs as a bare Python process, so macOS shows the
+    generic Python rocket in the dock. Setting the application icon image swaps in blurt's
+    icns. (Double-clicking blurt.app already shows the right icon via the bundle; this fixes
+    the `blurt`-from-a-shell path.) Must run on the main thread, after the app is up.
+    """
+    try:
+        from importlib import resources
+
+        import AppKit
+
+        ref = resources.files("blurt").joinpath("assets/Blurt.icns")
+        with resources.as_file(ref) as fp:
+            icon = AppKit.NSImage.alloc().initWithContentsOfFile_(str(fp))
+        if icon is not None:
+            app.setApplicationIconImage_(icon)
+    except Exception:
+        pass  # cosmetic; a wrong dock icon must never break the app
 
 
 def _brand_macos_app() -> None:
