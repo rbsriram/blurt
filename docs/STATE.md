@@ -5,7 +5,7 @@ _A living snapshot of where Blurt is. Update it as things change._
 ## Where it is
 
 Blurt is **shipped: public, open source (MIT) at
-[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.1.1.** Install is
+[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.1.2.** Install is
 `pipx install git+https://github.com/rbsriram/blurt` then `blurt` (see the README);
 a `blurt/cli.py` launcher checks Ollama, starts the server, and opens Blurt in its
 own native desktop window (`blurt/desktop.py`, via pywebview; `BLURT_BROWSER=1`
