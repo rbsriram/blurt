@@ -5,10 +5,22 @@ _A living snapshot of where Blurt is. Update it as things change._
 ## Where it is
 
 Blurt is **shipped: public, open source (MIT) at
-[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.0.3.** Install is
+[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.1.0.** Install is
 `pipx install git+https://github.com/rbsriram/blurt` then `blurt` (see the README);
-a `blurt/cli.py` launcher checks Ollama, opens the browser, and starts the server.
-CI (lint + import smoke + offline unit tests) is green; Issues + Discussions are on.
+a `blurt/cli.py` launcher checks Ollama, starts the server, and opens Blurt in its
+own native desktop window (`blurt/desktop.py`, via pywebview; `BLURT_BROWSER=1`
+falls back to a browser tab). On macOS the install itself adds a double-clickable
+`blurt.app` (dock icon, lowercase "blurt" brand, a conventional App/Edit/View/Window/Help
+menu) to `~/Applications`: `blurt/installer.py` writes a thin bundle that execs
+`sys.executable -m blurt.cli`, so it works for any install method (pipx/pip/bootstrap),
+created silently on first run (once; a `.app-added` marker stops it resurrecting a bundle
+the user trashed) or via `blurt install-app`. The window sizes to the screen and remembers
+its geometry; the menu bar (blurt/File/Edit/View/Window/Help) is built in `blurt/desktop.py`.
+A Settings pane (`⌘,`) holds the notes-folder choice and an update check; `scratchpad.md`
+can live in any folder (e.g. an Obsidian/Dropbox folder) while the index DB stays internal.
+`blurt uninstall` removes the app and leaves notes alone. The icon ships in the wheel
+(`blurt/assets/Blurt.icns`, plus `static/blurt-icon.png` for the splash). CI (lint + import
+smoke + offline unit tests) is green; Issues + Discussions are on.
 
 Feature-complete for v1. Backend and front end are both built to `docs/UX.md`,
 tested, and linted.

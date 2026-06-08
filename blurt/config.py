@@ -7,6 +7,7 @@ users. Prefix for all overrides: BLURT_ (e.g. BLURT_PORT=8080).
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -99,9 +100,17 @@ class Settings:
     enable_test_endpoints: bool = field(default_factory=lambda: _env_bool("TESTING", False))
 
     @property
+    def notes_dir(self) -> Path:
+        """Folder where the readable scratchpad.md lives. Defaults to beside the DB, but
+        the user can point it at any folder (e.g. inside a synced/Obsidian folder); that
+        choice is persisted in settings.json next to the DB. The index DB itself never
+        moves, so pointing at a cloud-synced folder is safe."""
+        chosen = _read_notes_dir(self.db_path)
+        return chosen if chosen is not None else Path(self.db_path).parent
+
+    @property
     def export_md_path(self) -> Path:
-        # Sits beside the DB so the data and its mirror travel together.
-        return Path(self.db_path).with_name("scratchpad.md")
+        return self.notes_dir / "scratchpad.md"
 
     @property
     def static_dir(self) -> Path:
@@ -113,3 +122,44 @@ class Settings:
 
 
 settings = Settings()
+
+
+# --- Persisted user choices (small JSON beside the DB, which never moves) ---------------
+# Kept separate from the env-driven Settings above: these are set at runtime (e.g. picking
+# a notes folder from the menu), not configured at launch.
+
+
+def _settings_file(db_path: str) -> Path:
+    return Path(db_path).parent / "settings.json"
+
+
+def _read_settings(db_path: str) -> dict:
+    f = _settings_file(db_path)
+    if not f.exists():
+        return {}
+    try:
+        data = json.loads(f.read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _read_notes_dir(db_path: str) -> Path | None:
+    chosen = _read_settings(db_path).get("notes_dir")
+    if chosen:
+        p = Path(chosen).expanduser()
+        if p.is_dir():
+            return p
+    return None
+
+
+def set_notes_dir(db_path: str, folder: str | Path) -> Path:
+    """Persist the user's chosen notes folder and return it. Raises if it is not a
+    writable directory, so the caller can surface a clear error."""
+    p = Path(folder).expanduser()
+    if not p.is_dir() or not os.access(p, os.W_OK):
+        raise ValueError(f"Not a writable folder: {p}")
+    data = _read_settings(db_path)
+    data["notes_dir"] = str(p)
+    _settings_file(db_path).write_text(json.dumps(data))
+    return p

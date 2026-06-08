@@ -7,19 +7,27 @@ in single-digit milliseconds.
 
 from __future__ import annotations
 
+import re
+
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
-from ..config import settings
+from ..config import set_notes_dir, settings
 from ..core import active_stream_markdown, render_stream_markdown
 from ..core.checklist import set_checkbox
 from .schemas import (
     CheckboxToggle,
     EntryCreate,
     EntryUpdate,
+    NotesDirRequest,
     QueryRequest,
     SuggestRequest,
     SynthesizeRequest,
 )
+
+# Where update-check reads the latest published version. Raw main always carries the
+# current __version__, so no releases/tags API or auth is needed.
+_LATEST_VERSION_URL = "https://raw.githubusercontent.com/rbsriram/blurt/main/blurt/__init__.py"
 
 router = APIRouter(prefix="/api")
 
@@ -209,6 +217,79 @@ async def export_markdown(request: Request, query: str | None = Query(None)):
         # Whole active stream, oldest first so the export reads chronologically.
         body = active_stream_markdown(db)
     return Response(content=body, media_type="text/markdown; charset=utf-8")
+
+
+# --- settings -----------------------------------------------------------
+
+@router.get("/settings")
+async def get_settings(request: Request):
+    return {
+        "notes_dir": str(settings.notes_dir),
+        "scratchpad_path": str(settings.export_md_path),
+        "version": request.app.state.version,
+    }
+
+
+@router.post("/notes-dir")
+async def change_notes_dir(body: NotesDirRequest, request: Request):
+    """Point the readable scratchpad.md at a new folder, live. The index DB does not
+    move, so a synced/cloud folder is safe. Writes the file at its new home immediately
+    and removes the stale copy left in the old folder."""
+    old_path = settings.export_md_path
+    try:
+        folder = set_notes_dir(settings.db_path, body.path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    new_path = folder / "scratchpad.md"
+    mirror = getattr(request.app.state, "mirror", None)
+    if mirror is not None:
+        mirror.set_path(new_path)
+        await mirror.flush()
+        if old_path != new_path and old_path.exists():
+            try:
+                old_path.unlink()
+            except OSError:
+                pass  # a leftover old mirror is harmless; do not fail the change over it
+    return {"notes_dir": str(folder), "scratchpad_path": str(new_path)}
+
+
+@router.get("/update-check")
+async def update_check(request: Request):
+    current = request.app.state.version
+    latest = await _fetch_latest_version()
+    if latest is None:
+        return {"current": current, "latest": None, "update_available": False,
+                "error": "Could not reach GitHub."}
+    return {
+        "current": current,
+        "latest": latest,
+        "update_available": _is_newer(latest, current),
+        "command": "pipx upgrade blurt",
+    }
+
+
+async def _fetch_latest_version() -> str | None:
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(_LATEST_VERSION_URL)
+            r.raise_for_status()
+        m = re.search(r'__version__\s*=\s*"([^"]+)"', r.text)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def _version_tuple(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", v))
+
+
+def _is_newer(latest: str, current: str) -> bool:
+    """Compare dotted numeric versions; unparseable input is treated as 'not newer'."""
+    try:
+        return _version_tuple(latest) > _version_tuple(current)
+    except Exception:
+        return False
 
 
 # --- test/dev only ------------------------------------------------------

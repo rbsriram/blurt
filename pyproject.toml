@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blurt"
-version = "1.0.3"
+version = "1.1.0"
 description = "A local-first scratchpad that surfaces the note you already wrote, as you type."
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,12 +15,13 @@ dependencies = [
     "pydantic>=2",
     "httpx>=0.26",
     "sqlite-vec>=0.1.6",
+    "pywebview>=5",  # native desktop window (uses the OS webview, no bundled browser)
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "faker>=24", "ruff>=0.4"]
 
-# `blurt` is the friendly launcher (opens the browser, checks Ollama, starts the
+# `blurt` is the friendly launcher (native window, checks Ollama, starts the
 # server). `blurt-serve` is the bare server for advanced/headless use.
 [project.scripts]
 blurt = "blurt.cli:main"
@@ -29,9 +30,10 @@ blurt-serve = "blurt.__main__:main"
 [tool.setuptools]
 packages = ["blurt", "blurt.api", "blurt.core", "blurt.db"]
 
-# Ship the UI and the SQL schema inside the wheel, or an install has no front end.
+# Ship the UI, the SQL schema, and the app icon inside the wheel, or an install has no
+# front end (and no icon to stamp into the double-click Blurt.app).
 [tool.setuptools.package-data]
-blurt = ["static/*", "db/*.sql"]
+blurt = ["static/*", "db/*.sql", "assets/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

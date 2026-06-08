@@ -80,6 +80,15 @@ class MarkdownMirror:
         """Mark the mirror stale; the worker coalesces and writes after the debounce."""
         self._dirty.set()
 
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def set_path(self, path: Path) -> None:
+        """Point the mirror at a new file (e.g. the user picked a different folder).
+        The caller should flush() afterward to write the file at its new home now."""
+        self._path = path
+
     async def _run(self) -> None:
         while True:
             await self._dirty.wait()

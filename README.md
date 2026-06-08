@@ -46,8 +46,7 @@ top of it, I would genuinely love to know.
 - **It is yours, completely.** Local SQLite plus local embeddings (Ollama). No
   cloud, no account, no API key, no telemetry. The internet is not invited.
 - **It is just text.** Markdown in, Markdown out. A plain `scratchpad.md` stays
-  in sync next to your data at all times, so even if you set Blurt on fire
-  tomorrow, your notes open in any editor on earth.
+  in sync next to your data at all times.
 - **Keyboard first.** A `/` menu for formatting (to-do, headings, code, all of
   it), lists that continue themselves, URLs that auto-link. No toolbars.
 
@@ -58,8 +57,12 @@ your machine, not on a server. In practice that means any reasonably modern
 computer: roughly 8GB of RAM or more, on an Apple Silicon or Intel Mac, Linux, or
 Windows. The embedding model (`nomic-embed-text`) is small, about 270MB, and light.
 No GPU required. A GPU only speeds up indexing a large backlog; for everyday typing
-you will not notice it working. Nothing leaving your machine is the whole point, and
-the tradeoff is that your machine is the one doing the work.
+you will not notice it working.
+
+Built and tested on a Mac. Linux should be fine too. Windows is untested so far: the
+core is cross-platform and the window should open, but the desktop niceties (adding
+itself to your apps, the native menu) are Mac-only for now. If you want to try it on
+Windows, go for it, and a pull request that makes it feel native there is welcome.
 
 ## Install
 
@@ -71,8 +74,9 @@ pipx install git+https://github.com/rbsriram/blurt
 blurt
 ```
 
-`blurt` opens it in your browser. The first run sets things up and pulls the
-embedding model (about 270MB, once). That is it.
+`blurt` opens it in its own desktop window, and on macOS it adds itself to your
+Applications, so after the first run you just double-click it like any app. The first
+run also pulls the embedding model (about 270MB, once). That is it.
 
 No pipx? Any of these also work:
 
@@ -88,7 +92,7 @@ git clone https://github.com/rbsriram/blurt && cd blurt && ./setup.sh
 ```
 
 Your notes live in `~/.local/share/blurt/` (a SQLite file and a plain
-`scratchpad.md`), never in the cloud. Press `?` in the app for the keys.
+`scratchpad.md`). Press `?` in the app for the keys.
 
 ## The keys (short version)
 
@@ -99,7 +103,6 @@ Your notes live in `~/.local/share/blurt/` (a SQLite file and a plain
 | `/` | formatting menu, at the start of a line |
 | `Up` | peek at matching notes, then edit one in place |
 | `Cmd/Ctrl+F` | search |
-| `Cmd/Ctrl+S` | download everything as Markdown |
 | `Cmd/Ctrl+Z` | undo the last thing |
 | `?` | the full cheatsheet |
 
