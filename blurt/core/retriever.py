@@ -40,8 +40,14 @@ class Retriever:
         if len(text.split()) < self._s.ghost_min_words_server:
             return empty
 
-        vec = await self._embedder.embed_document_one(text)
-        hits = await asyncio.to_thread(self._db.knn, vec, 8)
+        # The peek is purely semantic, so if embeddings are unavailable (Ollama down or
+        # slow) it simply shows nothing. Never let that raise: /suggest fires on every
+        # keystroke, and a 500 storm helps no one.
+        try:
+            vec = await self._embedder.embed_document_one(text)
+            hits = await asyncio.to_thread(self._db.knn, vec, 8)
+        except Exception:
+            return empty
         if not hits:
             return empty
 
@@ -79,16 +85,21 @@ class Retriever:
         # 1. Lexical: exact substring matches are high-confidence and immediate.
         lexical = await asyncio.to_thread(self._db.lexical_search, q, cap)
 
-        # 2. Semantic: vector KNN collapsed to parent entries by best chunk.
-        vec = await self._embedder.embed_query(q)
-        hits = await asyncio.to_thread(self._db.knn, vec, self._s.query_top_chunks)
+        # 2. Semantic: vector KNN collapsed to parent entries by best chunk. Best-effort:
+        # if embeddings are unavailable (Ollama down), exact matches must still return, so a
+        # failure here degrades to lexical-only rather than sinking the whole search.
         best: dict[int, float] = {}
-        if hits:
-            mapping = await asyncio.to_thread(self._db.chunk_entry_map, [c for c, _ in hits])
-            for chunk_id, sim in hits:
-                eid = mapping.get(chunk_id)
-                if eid is not None and (eid not in best or sim > best[eid]):
-                    best[eid] = sim
+        try:
+            vec = await self._embedder.embed_query(q)
+            hits = await asyncio.to_thread(self._db.knn, vec, self._s.query_top_chunks)
+            if hits:
+                mapping = await asyncio.to_thread(self._db.chunk_entry_map, [c for c, _ in hits])
+                for chunk_id, sim in hits:
+                    eid = mapping.get(chunk_id)
+                    if eid is not None and (eid not in best or sim > best[eid]):
+                        best[eid] = sim
+        except Exception:
+            pass  # Ollama unreachable/slow: return the lexical hits we already have
         ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
         rows = await asyncio.to_thread(self._db.get_entries_by_ids, [eid for eid, _ in ranked])
         rowmap = {r["id"]: r for r in rows}
