@@ -16,13 +16,19 @@ from pathlib import Path
 APP_NAME = "blurt.app"
 _LEGACY_APP_NAME = "Blurt.app"  # pre-1.1 bundles used a capitalized name; clean them up
 
+# The bundle's identity. LaunchServices sets __CFBundleIdentifier to this in the launched
+# app's environment, which is how the launcher tells "running inside blurt.app" apart from
+# "running in a terminal" (terminals set __CFBundleIdentifier to their OWN id, e.g.
+# com.apple.Terminal, so mere presence is not enough; the launcher checks for this value).
+BUNDLE_ID = "com.rbsriram.blurt"
+
 _INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key><string>blurt</string>
   <key>CFBundleDisplayName</key><string>blurt</string>
-  <key>CFBundleIdentifier</key><string>com.rbsriram.blurt</string>
+  <key>CFBundleIdentifier</key><string>{bundle_id}</string>
   <key>CFBundleExecutable</key><string>blurt</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>{version}</string>
@@ -75,7 +81,9 @@ def install_app() -> Path:
     macos.mkdir(parents=True, exist_ok=True)
     res.mkdir(parents=True, exist_ok=True)
 
-    (contents / "Info.plist").write_text(_INFO_PLIST.format(version=__version__))
+    (contents / "Info.plist").write_text(
+        _INFO_PLIST.format(version=__version__, bundle_id=BUNDLE_ID)
+    )
 
     launcher = macos / "blurt"
     # Quote the interpreter path; it can contain spaces (e.g. under "Application Support").
