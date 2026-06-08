@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "blurt"
 version = "1.0.3"
-description = "A local-first notepad that surfaces the note you already wrote, as you type."
+description = "A local-first scratchpad that surfaces the note you already wrote, as you type."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

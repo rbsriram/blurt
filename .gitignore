@@ -21,3 +21,6 @@ scratchpad.md.tmp
 .DS_Store
 .idea/
 .vscode/
+
+# AI operating brief (local only, not for the public repo)
+CLAUDE.md
