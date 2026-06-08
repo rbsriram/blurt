@@ -29,12 +29,14 @@ class OllamaEmbedder:
         use_prefixes: bool = True,
         timeout_s: float = 30.0,
         keep_alive: str = "30m",
+        pull_timeout_s: float = 900.0,
     ):
         self.url = url.rstrip("/")
         self.model = model
         self.dim = dim
         self.use_prefixes = use_prefixes
         self.keep_alive = keep_alive
+        self.pull_timeout_s = pull_timeout_s
         self._client = httpx.AsyncClient(base_url=self.url, timeout=timeout_s)
 
     async def aclose(self) -> None:
@@ -74,6 +76,29 @@ class OllamaEmbedder:
 
     async def embed_query(self, text: str) -> list[float]:
         return (await self._embed_raw([self._query(text)]))[0]
+
+    async def ensure_model(self) -> bool:
+        """Make sure the embedding model is present, pulling it if not. Returns whether the
+        model is available afterward. Used to self-heal when Ollama is installed/started after
+        Blurt is already running (the launcher only pulls at boot). Safe to call repeatedly:
+        pulling an already-present model is a no-op, and an unreachable server just returns
+        False. The pull moves ~270MB once, hence its own long timeout."""
+        reachable, available = await self.health()
+        if not reachable:
+            return False
+        if available:
+            return True
+        try:
+            r = await self._client.post(
+                "/api/pull",
+                json={"model": self.model, "stream": False},
+                timeout=self.pull_timeout_s,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError:
+            return False
+        _, available = await self.health()
+        return available
 
     async def health(self) -> tuple[bool, bool]:
         """Return (server_reachable, embed_model_available)."""

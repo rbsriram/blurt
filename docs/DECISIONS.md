@@ -767,3 +767,28 @@ broken `↑` afterward. New model:
   a full-screen overlay with body copy and a "keep going" dismiss, trimmed to a single faint
   line per their call. Copy leans into blurt's own word, "peek", not generic "smart search".
   Sits at z-index 40, under the splash (50), so the brand flash still plays first.
+
+### 53. Gate on Ollama at startup; self-heal the index; show engine state in Settings (owner)
+- Owner reframed the whole thing: blurt's peek runs on a local model (Ollama + nomic-embed-text),
+  exactly like a voice app leaning on a local STT model (TypeWhisper + Parakeet). A half-working
+  "runs without Ollama" mode is what produced the silent failures (notes saved but never indexed),
+  so make the dependency explicit instead of papering over it.
+- **Startup gate (front end).** Driven by `/api/status`, the pad is blocked on first launch until
+  Ollama is reachable AND the model is available (`#ollama-gate` dims the pad, the pill centers
+  over it, the composer is disabled). Polls every 3s while degraded, 15s when healthy. The moment
+  it is healthy the gate clears and the composer focuses. Crucially, the gate is one-shot: once
+  the engine has been healthy (`everHealthy`), a later Ollama drop is NON-blocking, just the
+  floating pill, so capture and exact search keep working and the peek resumes on recovery. You
+  never get blocked from jotting a note because a background service hiccuped.
+- **Self-heal (back end).** The indexer runs a heal loop every `reconcile_interval_s` (8s):
+  `embedder.ensure_model()` pulls the model if Ollama is up but lacks it (the launcher only pulls
+  at boot, so a mid-session Ollama install would otherwise never get the model), then
+  `db.unindexed_active_ids()` finds active notes with no chunks (saved while Ollama was down) and
+  re-enqueues them. An `_inflight` set dedupes so reconcile never double-indexes a queued note.
+  Verified end to end: a note inserted with no chunks got indexed within ~6s and became peekable
+  (score 0.87) against real Ollama.
+- **Settings engine row.** Shows live Ollama reachability, the embedding model state
+  (ready / downloading / —), and any catch-up indexing count, updated on every poll. Makes the
+  local-model dependency a visible, first-class thing rather than hidden plumbing.
+- Positioning: Ollama is now a hard requirement to *start* blurt, but the app stays resilient to
+  mid-session drops. The earlier exact-search-survives-Ollama fix (#51) still backs that resilience.

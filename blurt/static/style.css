@@ -337,6 +337,19 @@ body {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
   animation: ollama-breathe 3.6s ease-in-out infinite;
 }
+/* Startup gate: a dim, blurred backdrop over the pad until Ollama + model are ready.
+   The pad shows faintly behind it (your notes are safe), but it is not interactive. */
+#ollama-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 35;            /* over the pad, under the pill (40) and the splash (50) */
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(3px);
+}
+#ollama-gate[hidden] { display: none; }
+/* While gating, the pill floats in the center of the screen instead of at the top. */
+#ollama-bar.gated { top: 50%; transform: translate(-50%, -50%); }
+
 #ollama-bar[hidden] { display: none; }
 #ollama-bar::before {           /* the pulsing status dot */
   content: "";

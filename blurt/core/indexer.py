@@ -27,22 +27,31 @@ class Indexer:
         self._embedder = embedder
         self._s = settings
         self._queue: asyncio.Queue[int] = asyncio.Queue()
+        self._inflight: set[int] = set()  # queued-or-processing ids, so reconcile never double-enqueues
         self._task: asyncio.Task | None = None
+        self._heal_task: asyncio.Task | None = None
 
     def start(self) -> None:
         if self._task is None:
             self._task = asyncio.create_task(self._run(), name="blurt-indexer")
+        if self._heal_task is None:
+            self._heal_task = asyncio.create_task(self._heal_loop(), name="blurt-indexer-heal")
 
     async def stop(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for attr in ("_task", "_heal_task"):
+            task = getattr(self, attr)
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                setattr(self, attr, None)
 
     def enqueue(self, entry_id: int) -> None:
+        if entry_id in self._inflight:  # already queued or being indexed; don't pile on a dupe
+            return
+        self._inflight.add(entry_id)
         self._queue.put_nowait(entry_id)
 
     def pending(self) -> int:
@@ -63,10 +72,32 @@ class Indexer:
             try:
                 await self._index_entries(batch)
             except Exception:  # noqa: BLE001 - worker must never die
+                # Most likely Ollama is down. The entries keep their "no chunks" state, so the
+                # self-heal pass re-enqueues them once it is back; here we just drop them from
+                # the in-flight set so that can happen.
                 log.exception("indexing batch failed: %s", batch)
             finally:
-                for _ in batch:
+                for eid in batch:
+                    self._inflight.discard(eid)
                     self._queue.task_done()
+
+    async def _heal_loop(self) -> None:
+        """Keep the index whole without a restart. Each pass: pull the embedding model if
+        Ollama just became reachable but lacks it, then re-enqueue any active notes that have
+        no chunks yet (saved while Ollama was down). When Ollama is unreachable, ensure_model
+        returns False and we skip, capture and exact search carry on regardless."""
+        while True:
+            await asyncio.sleep(self._s.reconcile_interval_s)
+            try:
+                if not await self._embedder.ensure_model():
+                    continue
+                ids = await asyncio.to_thread(
+                    self._db.unindexed_active_ids, self._s.index_drain_cap
+                )
+                for eid in ids:
+                    self.enqueue(eid)
+            except Exception:  # noqa: BLE001 - the heal loop must never die either
+                log.exception("self-heal pass failed")
 
     async def _index_entries(self, entry_ids: list[int]) -> None:
         # Process in groups so entries become searchable incrementally during a
