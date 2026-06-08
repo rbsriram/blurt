@@ -91,12 +91,15 @@ def _should_handoff() -> bool:
     itself, so the dock shows blurt's icon and name rather than the host Python's. False
     once we are inside the bundle (LaunchServices sets __CFBundleIdentifier), in browser
     mode, off macOS, or when the bundle is not installed."""
-    from .installer import is_installed
+    from .installer import BUNDLE_ID, is_installed
 
+    # __CFBundleIdentifier is set by whatever launched us: blurt.app -> BUNDLE_ID (don't hand
+    # off, we ARE the app), a terminal -> its own id like com.apple.Terminal (do hand off). So
+    # checking the value, not mere presence, is what tells the two apart.
     return (
         sys.platform == "darwin"
         and not _want_browser()
-        and not os.environ.get("__CFBundleIdentifier")
+        and os.environ.get("__CFBundleIdentifier") != BUNDLE_ID
         and is_installed()
     )
 

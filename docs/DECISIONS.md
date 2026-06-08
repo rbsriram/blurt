@@ -727,6 +727,15 @@ broken `↑` afterward. New model:
   visible. Falls back to the in-process window if the bundle is missing (user trashed it) or
   `open` fails. `_set_dock_icon` (set the app icon image on the main thread) stays as a
   belt-and-suspenders for that fallback path.
+- Bug in the first cut of the handoff: the "am I inside the bundle?" guard tested whether
+  `__CFBundleIdentifier` was *set*. But terminals set it too (Terminal.app ->
+  `com.apple.Terminal`), so the guard thought every terminal launch was already in-bundle and
+  skipped the handoff: blurt ran in-process and died with the terminal. Fix: compare the value
+  to blurt's own `BUNDLE_ID` (`com.rbsriram.blurt`). LaunchServices sets it to that only when
+  blurt.app launched us; a terminal sets its own id (or nothing), so the value, not its
+  presence, distinguishes the two. `BUNDLE_ID` is now a shared constant in installer.py (used
+  by the plist and the guard). Existing bundles already carry that id, so a package reinstall
+  is enough; the on-disk app does not need regenerating.
 - Dropped the `http://127.0.0.1:7337` from the "Starting Blurt ..." and "already running"
   lines: a localhost IP printed at a non-coder reads as scary/technical for zero benefit
   (browser mode opens the URL automatically anyway).
