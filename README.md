@@ -1,6 +1,8 @@
 # Blurt
 
-A notepad that remembers so you don't have to.
+**just type. it remembers.**
+
+![Blurt: type a thought, and it surfaces the note you already wrote](docs/demo.gif)
 
 You just type. One endless stream, newest at the bottom, no folders, no tags, no
 "where did I put that." The twist: as you write, Blurt is quietly reading your
@@ -8,23 +10,16 @@ own past notes back to itself, and the moment you start writing something you
 already wrote once, it surfaces the old one right above your cursor. Update it,
 or ignore it. Your call. It all runs on your machine. Nothing leaves.
 
-```
-   ┌─ the peek: notes that match what you're typing ───────────────┐
-   │  raj's number is 050-2222                                     │
-   └───────────────────────────────────────────────────────────────┘
-   gate code for raj's building|                       <- you, typing
-```
-
-It is semantic, not search-by-keyword. Type "the passcode for the building
-entrance" and it pulls up the note that says "gate code is 44321." You never
-typed the same words. It just gets it.
+It is semantic, not search-by-keyword. Type "where did I put the extra key" and it
+pulls up the note that says "spare key is under the blue flowerpot." You never typed
+the same words. It just gets it.
 
 ## Why I built this
 
 I am a scratchpad person. Always have been. Every note app I have ever used ends up
 the same way: one giant dump, everything thrown in as it happens. Meeting notes
 sitting next to a gate code sitting next to someone's phone number sitting next to a
-half-finished thought I had at 2am. No folders, no tags, no going back to organise
+half-finished thought I had at 2am. No folders, no tags, no going back to organize
 anything. Just a single running stream of everything my brain decided was worth
 keeping.
 
@@ -55,6 +50,16 @@ top of it, I would genuinely love to know.
   tomorrow, your notes open in any editor on earth.
 - **Keyboard first.** A `/` menu for formatting (to-do, headings, code, all of
   it), lists that continue themselves, URLs that auto-link. No toolbars.
+
+## What it needs
+
+Blurt does its semantic search locally through Ollama, so the thinking happens on
+your machine, not on a server. In practice that means any reasonably modern
+computer: roughly 8GB of RAM or more, on an Apple Silicon or Intel Mac, Linux, or
+Windows. The embedding model (`nomic-embed-text`) is small, about 270MB, and light.
+No GPU required. A GPU only speeds up indexing a large backlog; for everyday typing
+you will not notice it working. Nothing leaving your machine is the whole point, and
+the tradeoff is that your machine is the one doing the work.
 
 ## Install
 
