@@ -1,0 +1,34 @@
+[project]
+name = "blurt"
+version = "1.0.0"
+description = "A local-first scratchpad with semantic ghost suggestions. Zero cloud, zero cost."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2",
+    "httpx>=0.26",
+    "sqlite-vec>=0.1.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "faker>=24", "ruff>=0.4"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]  # so `import blurt` works under bare `pytest` (and in CI)
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"docs/test_suite.py" = ["F", "E", "B"]
+"tests/*" = ["F", "E", "B"]
