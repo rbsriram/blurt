@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import PlainTextResponse
 from starlette.types import Scope
 
 from . import __version__
@@ -87,8 +88,29 @@ class _NoCacheStatic(StaticFiles):
         return response
 
 
+def _allowed_hosts() -> set[str]:
+    # Hostnames the server will answer to. localhost names always, plus whatever
+    # host it was told to bind (so a deliberate LAN/tailnet bind still works).
+    hosts = {"localhost", "127.0.0.1", "::1"}
+    hosts.add(settings.host.strip("[]").lower())
+    return hosts
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Blurt", version=__version__, lifespan=lifespan)
+
+    allowed = _allowed_hosts()
+
+    @app.middleware("http")
+    async def _guard_host(request, call_next):
+        # Anti-DNS-rebinding: a request only counts if its Host header is a known
+        # localhost name. A malicious site that resolves its own domain to 127.0.0.1
+        # still sends *its* domain as Host, so it gets a 403 and can't touch the API.
+        host = request.headers.get("host", "").rsplit(":", 1)[0].strip("[]").lower()
+        if host and host not in allowed:
+            return PlainTextResponse("forbidden host", status_code=403)
+        return await call_next(request)
+
     app.include_router(router)
     # Static UI is the catch-all, registered last so it never shadows /api.
     app.mount("/", _NoCacheStatic(directory=str(settings.static_dir), html=True), name="static")
