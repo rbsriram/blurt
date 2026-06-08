@@ -1,31 +1,17 @@
 #!/usr/bin/env bash
-# The `blurt` launcher. One command: set up on first run, then boot the app and
-# open it in your browser. Works both from a clone (run scripts/blurt) and from a
-# Homebrew install (the formula points BLURT_SRC at its libexec copy).
+# Bootstrap launcher for the non-pip install paths (install.sh and the Homebrew
+# tap). It builds an isolated venv from the bundled source on first run, then hands
+# off to the `blurt` command (blurt/cli.py), which checks Ollama, opens the browser,
+# and starts the server. If you have pipx, `pipx install blurt` is simpler and skips
+# all of this.
 set -euo pipefail
 
-PORT="${BLURT_PORT:-7337}"
-URL="http://localhost:${PORT}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/blurt"
 VENV="$DATA/venv"
-# Where the Blurt source lives (to install from). Default: the repo this script is in.
 SRC="${BLURT_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
-
-say()  { printf "\033[1m%s\033[0m\n" "$*"; }
-warn() { printf "\033[33m%s\033[0m\n" "$*"; }
-
-open_url() { command -v open >/dev/null 2>&1 && open "$URL" || say "Open $URL"; }
-
-# Already running? Just open the browser and bail.
-if curl -fsS "$URL/api/status" >/dev/null 2>&1; then
-  say "Blurt is already running."
-  open_url
-  exit 0
-fi
-
 mkdir -p "$DATA"
 
-# --- pick a Python 3.11+ -----------------------------------------------------
+# pick a Python 3.11+
 PY=""
 for c in python3.13 python3.12 python3.11 python3; do
   if command -v "$c" >/dev/null 2>&1; then
@@ -33,36 +19,17 @@ for c in python3.13 python3.12 python3.11 python3; do
     if [ "${v%.*}" -eq 3 ] && [ "${v#*.}" -ge 11 ]; then PY="$c"; break; fi
   fi
 done
-[ -n "$PY" ] || { warn "Python 3.11+ is required (https://www.python.org/downloads/)."; exit 1; }
+[ -n "$PY" ] || { echo "Python 3.11+ is required (https://www.python.org/downloads/)."; exit 1; }
 
-# --- first run / upgrade: build the isolated env -----------------------------
-WANT_VERSION=$(sed -n 's/^__version__ *= *"\(.*\)"/\1/p' "$SRC/blurt/__init__.py" 2>/dev/null || echo "dev")
-HAVE_VERSION=$(cat "$DATA/.installed-version" 2>/dev/null || echo "")
-if [ ! -x "$VENV/bin/python" ] || [ "$WANT_VERSION" != "$HAVE_VERSION" ]; then
-  say "Setting up Blurt ${WANT_VERSION} (first run is a one-time, ~30s install)..."
+# first run / upgrade: build the isolated env
+WANT=$(sed -n 's/^__version__ *= *"\(.*\)"/\1/p' "$SRC/blurt/__init__.py" 2>/dev/null || echo dev)
+HAVE=$(cat "$DATA/.installed-version" 2>/dev/null || echo "")
+if [ ! -x "$VENV/bin/blurt" ] || [ "$WANT" != "$HAVE" ]; then
+  echo "Setting up Blurt ${WANT} (first run is a one-time, ~30s install)..."
   "$PY" -m venv "$VENV"
   "$VENV/bin/python" -m pip install --quiet --upgrade pip
   "$VENV/bin/python" -m pip install --quiet "$SRC"
-  echo "$WANT_VERSION" > "$DATA/.installed-version"
+  echo "$WANT" > "$DATA/.installed-version"
 fi
 
-# --- make sure the local embedding brain is awake ----------------------------
-if command -v ollama >/dev/null 2>&1; then
-  curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1 || {
-    say "Starting Ollama..."; (ollama serve >/dev/null 2>&1 &) ; sleep 2;
-  }
-  if ! ollama list 2>/dev/null | grep -q "nomic-embed-text"; then
-    say "Pulling the embedding model (one time, ~270MB)..."
-    ollama pull nomic-embed-text || warn "Could not pull it. Run: ollama pull nomic-embed-text"
-  fi
-else
-  warn "Ollama is not installed. Blurt still runs, but the smart 'peek' needs it."
-  warn "Install from https://ollama.com/download, then: ollama pull nomic-embed-text"
-fi
-
-# --- launch + open ------------------------------------------------------------
-export BLURT_DB_PATH="$DATA/blurt.db"   # notes live in your data dir, not the install dir
-say "Starting Blurt on ${URL} ..."
-cd "$DATA"                              # neutral CWD: never import a stray ./blurt
-( for _ in $(seq 1 60); do curl -fsS "$URL/api/status" >/dev/null 2>&1 && { open_url; break; }; sleep 0.3; done ) &
-exec "$VENV/bin/blurt-serve"           # the installed console entry point
+exec "$VENV/bin/blurt" "$@"
