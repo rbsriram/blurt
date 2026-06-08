@@ -21,22 +21,26 @@ typed the same words. It just gets it.
 
 ## Why I built this
 
-I have always been a scratchpad person. One note, one stream, everything dumped
-in: meeting notes, passwords, phone numbers, random thoughts, account numbers,
-to-dos, all of it. No folders, no tags, no organization. Just a running log of my
-brain. The problem was never the input. The problem was always getting things back
-out. Searching meant scrolling, guessing keywords, connecting dots by hand, and
-half the time the thing I needed had been quietly overwritten three entries ago
-with no way to know which version was current.
+I am a scratchpad person. Always have been. Every note app I have ever used ends up
+the same way: one giant dump, everything thrown in as it happens. Meeting notes
+sitting next to a gate code sitting next to someone's phone number sitting next to a
+half-finished thought I had at 2am. No folders, no tags, no going back to organise
+anything. Just a single running stream of everything my brain decided was worth
+keeping.
 
-I built Blurt for myself. I wanted something that looked like the dumbest notepad
-you have ever seen but was smart enough to notice when I was writing something that
-already existed, surface it quietly without interrupting me, and give me exactly
-what I asked for when I searched. No cloud, no subscription, no AI API I pay for
-every month. Just a local tool that stays out of my way and does its job.
+The problem was never writing things down. That part I had figured out. The problem
+was always later. Scrambling through old entries trying to remember the exact word I
+used. Finding three versions of the same phone number and having no idea which one
+was current. Knowing I wrote something down somewhere and still spending ten minutes
+looking for it like an idiot.
 
-If this is how your brain works too, give it a try. And if you build something cool
-on top of it, I would love to hear about it.
+I built Blurt because I got tired of that. It looks like the dumbest notepad you have
+ever seen, and that is entirely intentional. The intelligence is underneath, invisible
+until you need it. It runs on your machine, it costs nothing to operate, and it never
+asks you to change how you think.
+
+If this is how your brain works too, it is yours. And if you build something cool on
+top of it, I would genuinely love to know.
 
 ## What makes it not annoying
 
