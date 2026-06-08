@@ -4,7 +4,7 @@
 # Read this file before you run it. That is the whole point of keeping it short.
 set -euo pipefail
 
-VERSION="${BLURT_VERSION:-v1.0.2}"
+VERSION="${BLURT_VERSION:-v1.0.3}"
 REPO="https://github.com/rbsriram/blurt"
 DEST="${BLURT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/blurt}"
 BIN="${BLURT_BIN:-$HOME/.local/bin}"
