@@ -21,19 +21,22 @@ typed the same words. It just gets it.
 
 ## Why I built this
 
-I am a person with a brain that leaks.
+I have always been a scratchpad person. One note, one stream, everything dumped
+in: meeting notes, passwords, phone numbers, random thoughts, account numbers,
+to-dos, all of it. No folders, no tags, no organization. Just a running log of my
+brain. The problem was never the input. The problem was always getting things back
+out. Searching meant scrolling, guessing keywords, connecting dots by hand, and
+half the time the thing I needed had been quietly overwritten three entries ago
+with no way to know which version was current.
 
-I have tried every notes app. They are all junk drawers. You dump things in, and
-three weeks later you are scrolling like a maniac looking for the wifi password
-you definitely wrote down, and you give up and write it down again, and now there
-are four wifi passwords and you trust none of them.
+I built Blurt for myself. I wanted something that looked like the dumbest notepad
+you have ever seen but was smart enough to notice when I was writing something that
+already existed, surface it quietly without interrupting me, and give me exactly
+what I asked for when I searched. No cloud, no subscription, no AI API I pay for
+every month. Just a local tool that stays out of my way and does its job.
 
-I did not want a better junk drawer. I wanted a notepad that taps me on the
-shoulder and says "hey, you already wrote this, want to fix the old one?" before
-I make a fifth copy. That is the whole product. Everything else exists so that
-one tap on the shoulder feels instant, stays private, and never gets in the way.
-
-So I built it. I had a lot of help. But it is mine and I love it.
+If this is how your brain works too, give it a try. And if you build something cool
+on top of it, I would love to hear about it.
 
 ## What makes it not annoying
 
@@ -49,18 +52,34 @@ So I built it. I had a lot of help. But it is mine and I love it.
 - **Keyboard first.** A `/` menu for formatting (to-do, headings, code, all of
   it), lists that continue themselves, URLs that auto-link. No toolbars.
 
-## Run it
+## Install
 
-You need Python 3.11+ and [Ollama](https://ollama.com/download) for the local
-embedding model (about 270MB, downloaded once).
+First, [Ollama](https://ollama.com/download) (the local brain). Then Blurt itself,
+the easy way, with [pipx](https://pipx.pypa.io) and Python 3.11+:
 
 ```bash
-git clone https://github.com/rbsriram/blurt && cd blurt
-./setup.sh                  # venv, deps, and pulls the embed model
-./.venv/bin/python main.py  # then open http://localhost:7337
+pipx install git+https://github.com/rbsriram/blurt
+blurt
 ```
 
-Open the page, start typing, press `?` any time for the keys.
+`blurt` opens it in your browser. The first run sets things up and pulls the
+embedding model (about 270MB, once). That is it.
+
+No pipx? Any of these also work:
+
+```bash
+pip install --user git+https://github.com/rbsriram/blurt && blurt   # plain pip
+
+# or a one-line installer (it just downloads a release and writes a launcher,
+# no build step; read it first, that is why it is short):
+curl -fsSL https://raw.githubusercontent.com/rbsriram/blurt/main/install.sh | bash
+
+# or from a clone:
+git clone https://github.com/rbsriram/blurt && cd blurt && ./setup.sh
+```
+
+Your notes live in `~/.local/share/blurt/` (a SQLite file and a plain
+`scratchpad.md`), never in the cloud. Press `?` in the app for the keys.
 
 ## The keys (short version)
 
