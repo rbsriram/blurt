@@ -499,3 +499,42 @@ broken `↑` afterward. New model:
   editing); **⌘/Ctrl-click opens** the link in a new tab (`window.open`). Links carry a
   `⌘/ctrl-click to open` tooltip and a pointer cursor. Search-result links open on plain
   click (no edit context there).
+
+### 38. Open-sourced (owner asked to commit + push)
+- Published at https://github.com/rbsriram/blurt, MIT, public. One clean initial
+  commit authored by the owner (rbsriram), no bot trailer on that first commit; later
+  commits carry a `Co-Authored-By: Claude Opus 4.8` trailer (owner switched from
+  "skip it" to "friendly Claude Code credit"). CI (lint + import smoke + offline unit
+  tests, 3.11/3.12) is green; Issues + Discussions on. Sanitized before going public:
+  removed the owner's Tailscale IP (was only in STATE.md), rewrote STATE.md as a clean
+  status doc, and untracked CLAUDE.md (internal AI brief, kept local, gitignored).
+
+### 39. Security: Host-header validation (anti-DNS-rebinding)
+- For a distributed no-auth local app, the real browser threat is a malicious page
+  resolving its own domain to 127.0.0.1 and hitting the local API. Added a middleware
+  (`_guard_host` in `app.py`) that 403s any request whose `Host` is not a known
+  localhost name (or the host the server was deliberately bound to). The attacker's page
+  sends its own domain as Host, so it is refused. Documented in docs/SECURITY.md.
+
+### 40. Distribution is pip/pipx, not Homebrew (owner: "why not pip install")
+- Homebrew was a dead end: the owner's very new brew wants Xcode 26.3 to build any
+  formula from source, and even a no-compile formula fails that preflight. Pivoted to a
+  Python `blurt` console command (`blurt/cli.py`: checks Ollama, opens the browser,
+  starts the server) so `pipx install git+https://github.com/rbsriram/blurt` just works,
+  cross-platform, no compiler. A curl `install.sh` and the `rbsriram/homebrew-blurt` tap
+  remain as secondary options (both bootstrap a venv and hand off to the same `blurt`).
+- Packaging bugs found and fixed: (a) static UI + db/schema.sql were not bundled in the
+  wheel — added `[tool.setuptools.package-data]`; (b) a stale `build/` dir had been
+  committed and setuptools used it as the build staging dir, shipping wrong versions —
+  untracked it and gitignored `build/`/`dist/`. Caught both via a version-string mismatch.
+
+### 41. Public positioning: "scratchpad", README hero, demo GIF (owner)
+- Word is **scratchpad**, not notepad (the owner's word, more distinctive, the category
+  the product is built around). Swapped it in the GitHub description, pyproject, and the
+  tap. README keeps "the dumbest notepad you have ever seen" (a visual metaphor in the
+  owner's story). Headline tagline: **just type. it remembers.**
+- README leads with a dark-mode **demo GIF** (`docs/demo.gif`) recorded with Playwright
+  driving the real app (multi-match peek + in-place edit, credential-free seed) and
+  ffmpeg for the GIF. Added a "What it needs" hardware note. The owner's first-person
+  "why I built this" story is in his own words.
+- Process note: the owner asked to run all public-facing copy past him before it ships.
