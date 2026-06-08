@@ -4,8 +4,14 @@ _A living snapshot of where Blurt is. Update it as things change._
 
 ## Where it is
 
-Blurt is **feature-complete for v1 and green**. Backend and front end are both
-built to `docs/UX.md`, tested, and linted.
+Blurt is **shipped: public, open source (MIT) at
+[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.0.3.** Install is
+`pipx install git+https://github.com/rbsriram/blurt` then `blurt` (see the README);
+a `blurt/cli.py` launcher checks Ollama, opens the browser, and starts the server.
+CI (lint + import smoke + offline unit tests) is green; Issues + Discussions are on.
+
+Feature-complete for v1. Backend and front end are both built to `docs/UX.md`,
+tested, and linted.
 
 - **Backend:** full API, hybrid search (semantic + exact), active-only vector
   index, incremental background indexing, model kept warm, localhost bind, DB file
@@ -42,9 +48,10 @@ sleep 4 && ./.venv/bin/pytest docs/test_suite.py -q
 
 ## Known limitations (by design / hardware-bound)
 
-- **No auth.** The server binds to localhost. Exposing it on a LAN or tailnet is
-  possible (set `BLURT_HOST`) but should wait for an auth story before more than
-  one trusted person can reach it.
+- **No auth.** The server binds to localhost, and Host-header validation
+  (anti-DNS-rebinding, see DECISIONS #39) blocks browser-based attempts at the local
+  API. Exposing it on a LAN or tailnet is possible (set `BLURT_HOST`) but should wait
+  for an auth story before more than one trusted person can reach it.
 - **Semantic speed is hardware-bound.** Bulk indexing runs at roughly 10-25
   notes/sec on a local model. Exact-text search is instant regardless; semantic
   catches up in the background.
@@ -53,7 +60,14 @@ sleep 4 && ./.venv/bin/pytest docs/test_suite.py -q
 
 ## Ideas not yet built
 
-- Packaged install (Homebrew / a real app shell) so it is not "clone and run."
-- A simple in-product feedback path.
-- Optional auth + multi-device sync.
+A "what's on the pad" style `ROADMAP.md` was drafted and **parked** (owner wants to
+revisit it). The honest shortlist:
+
+- A small native app shell so Blurt gets a dock icon (pip/pipx install already done).
+- A simple, explicit in-product feedback path (no telemetry, ever).
+- Optional auth + peer-to-peer multi-device sync (no cloud middleman).
 - The `/` menu inside the in-stream editor (currently compose-box only).
+- Self-renumbering ordered lists; Cmd-clickable links in search results.
+
+The launch follow-ups (a Show HN / Reddit post in the owner's voice) are also pending;
+all public copy goes through the owner first.
