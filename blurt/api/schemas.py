@@ -61,3 +61,14 @@ class QueryRequest(BaseModel):
 class SynthesizeRequest(BaseModel):
     query: str
     entry_ids: list[int] = []
+
+
+class NotesDirRequest(BaseModel):
+    path: str
+
+    @field_validator("path")
+    @classmethod
+    def _check(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("path may not be empty")
+        return v

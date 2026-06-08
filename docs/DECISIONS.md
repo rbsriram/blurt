@@ -538,3 +538,159 @@ broken `↑` afterward. New model:
   ffmpeg for the GIF. Added a "What it needs" hardware note. The owner's first-person
   "why I built this" story is in his own words.
 - Process note: the owner asked to run all public-facing copy past him before it ships.
+
+### 42. `blurt` opens a native desktop window, not a browser tab (owner)
+- Owner's complaint: it lives in a browser, so "what if the browser is closed?" A tab is
+  not an app. Made `blurt` open Blurt in its own native window that owns the app's
+  lifecycle: close the window and Blurt quits, no stray tab to babysit.
+- Backend choice: **pywebview** over Electron/Tauri. It is Python-native (no Node, no
+  Rust, no bundled Chromium), free, BSD-licensed, and renders through the OS webview
+  (Cocoa/WebKit on macOS via pyobjc, GTK/WebKit on Linux). The install stays tiny because
+  there is no second browser engine to ship. Same FastAPI app, unchanged.
+- Mechanics (`blurt/desktop.py`): uvicorn runs in a daemon thread with signal handlers
+  disabled (they can only install on the main thread, which the GUI event loop needs),
+  the launcher waits for `/api/status`, then `webview.start()` blocks on the main thread
+  until the window closes, which flips `server.should_exit`. Window is a tall 560x860
+  column to suit the single vertical note stream; min size 420x520.
+- `BLURT_BROWSER=1` opens a browser tab instead, and the same browser path is the
+  automatic fallback if the webview backend is missing or fails to start. Attaching a
+  window to an already-running server still works (it just presents, no second server).
+### 43. Double-clickable `Blurt.app`, created by the install itself (owner: "click and done", "others should install simply")
+- Owner wanted to launch from the dock/Applications, not a terminal, AND wanted that to
+  be true for anyone who installs, not just this dev checkout. So the bundle is created
+  **at runtime by the installed package**, not built from the repo.
+- `blurt/installer.py` writes `~/Applications/Blurt.app` whose launcher execs
+  `sys.executable -m blurt.cli`. Key move: `sys.executable` is whatever Python the user
+  installed Blurt into (pipx venv, `pip --user`, or the install.sh bootstrap venv), and
+  `blurt` is a real install there, so `-m blurt.cli` resolves from any CWD. No repo path,
+  no `PYTHONPATH` hack, works for every install method. `~/Applications` (per-user) avoids
+  needing admin; it still shows in Launchpad/Spotlight.
+- Two entry points: `blurt install-app` (explicit, re-runnable) and a silent first-run
+  `ensure_installed()` in `cli.py` that drops the app in on the first `blurt` and is a
+  no-op afterward. A packaging failure never blocks the actual launch.
+- Launching through a real bundle (vs. `python ...` in a terminal) is what makes the menu
+  bar say **Blurt** instead of **Python** and gives the dock icon, so no separate fix was
+  needed for the name.
+- Icon: `scripts/make-icon.py` draws it (Pillow + `iconutil`, build-time only) and writes
+  `blurt/assets/Blurt.icns`, which is **shipped in the wheel** (`package-data`) so any
+  install can stamp it into the bundle. A dark slate squircle, off-white lowercase "b",
+  slate-blue caret beside it (reads "bl" and as a typing cursor), palette from the UI
+  accent. Rejected py2app/PyInstaller (heavy, signing-prone) for the thin wrapper.
+- Editable-installed the dev `.venv` (`pip install -e .`) so the same code path works in
+  development too; dropped the earlier dev-only `scripts/make-macos-app.sh`.
+- Still not done: Windows/Linux equivalents, code signing/notarization (Gatekeeper may
+  warn on a downloaded-then-quarantined copy; a locally-created bundle is not quarantined).
+
+### 44. Brand splash on every load; the keys tutorial only for a blank pad (owner)
+- Previously the "blurt" splash AND the inline keys cheatsheet both played only on a blank
+  pad. Owner wanted the brand moment on every load (each launch should feel like opening
+  the app) but did not want returning users re-shown the keys.
+- Decoupled the two (`app.js` boot): every load runs the splash; the keys are written into
+  the pad only when it loads blank (first run or post-erase). With notes present it is a
+  brand flash, no tutorial.
+- Honored the owner's standing "instant" preference by giving the returning-load splash a
+  shorter animation (`splash-quick`, ~0.9s) vs. the full ~1.8s new-pad swell, so it reads
+  as a quick flash rather than a wait. Also reset the `run`/`quick` classes after each play
+  so the splash can replay (the post-erase intro was previously a no-op on repeat).
+- Kept the wordmark "blurt" in the splash rather than the app icon image: it renders
+  instantly as text (no image load) and is the existing brand moment.
+
+### 45. Window: screen-relative default size, remembered geometry, "Blurt" menu name (owner, on the real app)
+- Owner ran the bundled app and hit three things: the menu bar said **Python**, the window
+  felt **narrow**, and he uses both a 27" monitor and a 13" Air, so any fixed size is wrong
+  for one of them.
+- Menu name: the app menu takes its name from the *running process's* main bundle, and the
+  launcher execs an external interpreter, so macOS resolves that to Python's bundle.
+  `desktop._set_macos_app_name` overrides `CFBundleName` in the in-memory info dict via
+  pyobjc before the window opens (the standard fix for a Python GUI). Fixes the terminal
+  `blurt` launch too, not just the bundle.
+- Size: dropped fixed dimensions. `_default_geometry` sizes to the current screen
+  (`NSScreen.visibleFrame`): ~46% width capped at 1000, ~88% height capped at 1040, with
+  floors. Proportional on any display instead of tiny on a big monitor or oversized on a
+  laptop.
+- Remembered geometry: `window.json` next to the DB stores width/height/x/y, updated on
+  the `resized`/`moved` events and flushed on `closing` (a locking event in pywebview, so
+  the write completes before the window goes away). On load the saved size is **clamped to
+  the current screen** and an off-screen position is dropped (re-center), so a window sized
+  on the BenQ still fits the Air. A bad/missing file falls back to the screen default; a
+  write failure never blocks the close.
+
+### 46. A conventional macOS menu bar, lowercase brand, icon in the splash (owner)
+- The brand is lowercase **blurt** everywhere: bundle renamed `blurt.app` (a pre-1.1
+  `Blurt.app` is removed on install), `CFBundleName`/`DisplayName` lowercased, window title
+  and in-process app name lowercased.
+- First pass over-corrected (stripped the menu to Hide/Quit, dropped About and Help). Owner
+  pushback: "do not reinvent the wheel", "keep the necessary ones". Rebuilt the standard
+  macOS layout in AppKit (`desktop._build_menu_bar`, on the main thread via `shown` +
+  `AppHelper`): **blurt** (About blurt, Hide/Hide Others/Show All, Quit), **Edit** (undo/
+  redo/cut/copy/paste/select all, so text editing keeps its shortcuts), **View** (Dark /
+  Light, Enter Full Screen), **Window** (Minimize, Zoom), **Help** (blurt Help, blurt on
+  GitHub).
+- App-specific items reuse the front end over the JS bridge instead of duplicating logic:
+  Help and View>Dark/Light call `window.__blurtHelp` / `__blurtTheme` (exposed in app.js),
+  which run the existing cheatsheet and theme toggle. A module global pins the action
+  controller because NSMenu holds only a weak target.
+- Deadlock bug found in testing: menu actions fire on the main UI thread, and pywebview's
+  `evaluate_js` blocks that thread waiting on the web view, so Help/Dark-Light froze the
+  whole app. Fixed by running the JS call on a worker thread (`_eval_js_async`); the main
+  thread stays free to service it.
+- About panel: the standard panel reads name/version/copyright from the *running process's*
+  bundle, i.e. Python's, so it showed "Version 1.1.0 (3.12.13)" and a PSF copyright.
+  `_brand_macos_app` overrides `CFBundleName`/`CFBundleShortVersionString`/`CFBundleVersion`/
+  `NSHumanReadableCopyright` in the in-memory bundle info, and the About action passes blurt's
+  icon and a blank build-version. Copyright line is the existing tagline "just type. it
+  remembers." (owner: do not invent taglines, keep it consistent).
+- Help menu is registered via `setHelpMenu_`, so macOS adds its standard search field. Owner
+  initially questioned it, then chose to keep it as the platform convention.
+- Splash now shows the **app icon** (a 512px PNG written next to the iconset by
+  `make-icon.py`, shipped in `static/`) instead of the wordmark, so the launch moment
+  matches the dock/app icon. Owner's call, for brand consistency.
+- The whole menu build is wrapped so a failure degrades to pywebview's default rather than
+  crashing the app.
+
+### 47. File menu (export + reveal), fixed in-window download, scale-checked to 300 (owner)
+- Added a **File** menu (between blurt and Edit): "Export as Markdown…" (⌘S, the on-demand
+  dated copy) and "Reveal scratchpad.md in Finder" (opens Finder on the always-current
+  mirror at `settings.export_md_path`, or its folder if no notes exist yet). Owner asked for
+  a simple, obvious place to download and to find the durable file.
+- Bug found while answering "how does export work": in the native window `Cmd+S` flashed
+  "saved a markdown copy" but saved nothing, because WKWebView ignores `<a download>` blob
+  downloads unless `webview.settings['ALLOW_DOWNLOADS']` is on (it defaults off). Turned it
+  on, so the download now raises a native Save dialog (defaulting to Downloads). The
+  always-on `scratchpad.md` mirror was never affected; only the explicit download was.
+- Two export paths, kept distinct: the **mirror** (`scratchpad.md`, continuous, beside the
+  DB at `~/.local/share/blurt/`) and the **on-demand copy** (⌘S / File > Export, a dated
+  snapshot the user saves anywhere).
+- Scale check (owner: "ensure it works for 100+ entries"): seeded 300 notes against a
+  throwaway server. Saves stayed instant (300 posted in ~0.2s total; embeddings run in the
+  background), indexing drained to 0 pending immediately, search ran ~17ms median, the ghost
+  ~18ms median with correct matches, export and the mirror produced the full 22KB in ~1ms,
+  and pagination returned all 300. No cliff; the active-only vector index keeps interactive
+  paths fast well past 100 entries.
+
+### 48. One export concept (the scratchpad file), a Settings pane, and a plain uninstall (owner)
+- Owner found two ways to get Markdown (Cmd+S download vs the scratchpad.md mirror)
+  confusing: same content, two buttons. Committed to the Obsidian-vault model, your notes
+  ARE scratchpad.md, always current. Removed the on-demand export entirely (Cmd+S handler,
+  the JS function, the cheatsheet row, the File-menu item, the in-window download enabling).
+  Cmd+S is still swallowed so the browser's save-page dialog never appears. The File menu is
+  now one item: "Open scratchpad".
+- "Reveal in Finder" was dropped as low-value. Folder choice and update checks moved into a
+  proper **Settings** pane (the owner's idea), reached via `blurt > Settings… (⌘,)`. It is an
+  in-app panel (same family as the cheatsheet), so it also works in browser mode (minus the
+  native folder picker).
+- Configurable notes folder: the readable `scratchpad.md` can live in any folder (e.g. inside
+  an Obsidian/Dropbox folder). Persisted in `settings.json` beside the DB; `config.notes_dir`
+  reads it; `POST /api/notes-dir` re-points the live mirror, writes the file at its new home,
+  and removes the stale one. The index DB never moves, so a synced folder is safe. The native
+  folder picker is exposed to the web UI via a pywebview `js_api` bridge (`_JsApi.pick_folder`).
+- Update check: `GET /api/update-check` reads `__version__` from raw GitHub `main` and
+  compares. Owner chose notify-and-show-the-command over a fragile one-click updater, so it
+  surfaces `pipx upgrade blurt` with a copy button when a newer version exists.
+- Uninstall, kept deliberately simple (owner: "do not over-engineer; if the scratchpad stays
+  it stays"). `blurt uninstall` removes the app bundle and prints where the notes are and the
+  `pipx/pip uninstall blurt` line. It never deletes notes; no prompt, no purge flag. To make a
+  manual trash of blurt.app stick, a `.app-added` marker records that the app was added once,
+  so first-run auto-add does not resurrect a bundle the user deliberately deleted (`blurt
+  install-app` adds it back on purpose). `blurt uninstall` clears the marker so a future fresh
+  install adds it again.

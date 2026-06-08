@@ -419,6 +419,48 @@ kbd {
   padding: 1px 5px;
 }
 
+/* --- settings (summoned): a centered panel, same family as the cheatsheet --- */
+#settings {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25;
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--faint);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.30);
+  padding: 32px 36px;
+  color: var(--fg);
+  animation: sheetfade 180ms ease both;
+}
+#settings[hidden] { display: none; }
+#settings h3 { margin: 0 0 22px; font-size: 13px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+#settings .row { padding: 14px 0; border-top: 1px solid var(--faint); }
+#settings .row:first-of-type { border-top: none; }
+#settings .label { font-size: 13px; color: var(--muted); margin-bottom: 7px; }
+#settings .value { display: flex; align-items: center; gap: 12px; }
+#settings .path { flex: 1; min-width: 0; overflow-wrap: anywhere; opacity: 0.85; font-size: 13px; }
+#settings button {
+  border: 1px solid var(--faint);
+  background: var(--faint);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#settings button:hover { border-color: var(--accent); }
+#settings .note { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+#settings .cmd { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+#settings code { background: var(--faint); padding: 3px 7px; border-radius: 5px; font-size: 12.5px; }
+#settings a { color: var(--accent); }
+
 /* --- test-only erase control: faint, top-right, out of the way --- */
 #erase {
   position: fixed;
@@ -453,18 +495,25 @@ kbd {
   pointer-events: none;
 }
 #splash[hidden] { display: none; }
-#splash .word {
-  font-size: clamp(56px, 13vw, 150px);
-  letter-spacing: 0.04em;
-  color: var(--fg);
+#splash .mark {
+  width: clamp(96px, 22vw, 200px);
+  height: auto;
+  border-radius: 22%;        /* match the squircle so any edge AA reads as the icon */
   opacity: 0;
 }
-#splash.run .word { animation: splash 1800ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+#splash.run .mark { animation: splash 1800ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+/* Returning load: a brief brand flash, not the full hold, so it stays zappy. */
+#splash.run.quick .mark { animation: splash-quick 900ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
 @keyframes splash {
   0%   { opacity: 0;    transform: scale(0.965); }
   26%  { opacity: 0.92; transform: scale(1); }
   62%  { opacity: 0.92; transform: scale(1); }
   100% { opacity: 0;    transform: scale(1.015); }
+}
+@keyframes splash-quick {
+  0%   { opacity: 0;   transform: scale(0.975); }
+  40%  { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1.01); }
 }
 
 /* --- the one indulgence --- */

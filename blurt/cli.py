@@ -1,8 +1,13 @@
-"""The `blurt` command: boot the app and open it in your browser.
+"""The `blurt` command: boot the app and open it in a native desktop window.
 
 This is the friendly launcher (what `pipx install blurt` exposes). It picks a data
-directory for your notes, makes sure the local embedding model is available, opens
-your browser, and starts the server. Plain `python -m blurt` runs the bare server.
+directory for your notes, makes sure the local embedding model is available, starts
+the server, and opens Blurt in its own window. The window owns the app's lifecycle:
+close it and Blurt is gone, with no browser tab to babysit.
+
+Set BLURT_BROWSER=1 to open a browser tab instead (also the automatic fallback if
+the native window backend is unavailable). Plain `python -m blurt` runs the bare
+server with no window at all.
 """
 
 from __future__ import annotations
@@ -10,7 +15,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import threading
 import time
 import urllib.request
 import webbrowser
@@ -57,37 +61,118 @@ def _which(cmd: str) -> bool:
     return which(cmd) is not None
 
 
+def _want_browser() -> bool:
+    return os.environ.get("BLURT_BROWSER", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _install_app_command() -> None:
+    from .installer import install_app, supported
+
+    if not supported():
+        print("The double-click app is macOS-only for now. On this system, just run `blurt`.")
+        return
+    path = install_app()
+    print(f"Added blurt to your Applications:\n  {path}")
+    print("Open it from Launchpad or Spotlight, or drag it to your dock.")
+
+
+def _offer_desktop_app() -> None:
+    """On the first macOS run, drop Blurt into ~/Applications so it is double-clickable.
+    Silent on every later run; never blocks the launch if it fails."""
+    from .installer import ensure_installed
+
+    created = ensure_installed()
+    if created is not None:
+        print(f"Added blurt to your Applications ({created.name}). Look for it in Launchpad.")
+
+
+def _uninstall_command() -> None:
+    """Remove the app and leave the notes alone. Your scratchpad stays where it is; if you
+    ever want it gone, delete the folder yourself. The package goes via pip/pipx."""
+    from .config import settings
+    from .installer import clear_app_marker, remove_app, supported
+
+    if supported():
+        removed = remove_app()
+        print(f"Removed {removed[0].name} from your Applications." if removed
+              else "No blurt app in Applications (already gone).")
+    clear_app_marker()
+
+    print(f"\nYour notes are kept, untouched:\n  {settings.export_md_path}")
+    print("\nTo finish removing the program:\n  pipx uninstall blurt    (or: pip uninstall blurt)")
+
+
+def _wait_ready(url: str, tries: int = 80) -> bool:
+    for _ in range(tries):
+        if _get(f"{url}/api/status", timeout=0.5) is not None:
+            return True
+        time.sleep(0.3)
+    return False
+
+
 def main() -> None:
+    # Resolve the data location first, so subcommands and the marker file see the same
+    # paths the running app would.
     os.environ.setdefault("BLURT_DB_PATH", str(_data_dir() / "blurt.db"))
+
+    arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg in {"install-app", "--install-app"}:  # (re)create the double-clickable app
+        _install_app_command()
+        return
+    if arg in {"uninstall", "--uninstall"}:  # remove the app, optionally the data
+        _uninstall_command()
+        return
+
+    _offer_desktop_app()
 
     from .app import create_app
     from .config import settings
 
     url = f"http://{settings.host}:{settings.port}"
 
-    # Already running? Just open the browser and stop.
+    # Already running in another process? Attach a window (or tab) to it and stop.
     if _get(f"{url}/api/status", timeout=0.5) is not None:
         print(f"Blurt is already running at {url}")
-        webbrowser.open(url)
+        _present(url)
         return
 
     _ensure_model()
 
-    def _open_when_ready() -> None:
-        for _ in range(80):
-            if _get(f"{url}/api/status", timeout=0.5) is not None:
-                webbrowser.open(url)
-                return
-            time.sleep(0.3)
+    print(f"Starting Blurt on {url} ...")
+    from .desktop import serve_in_background
 
-    threading.Thread(target=_open_when_ready, daemon=True).start()
+    server = serve_in_background(create_app(), settings.host, settings.port)
+    if not _wait_ready(url):
+        print("Blurt did not come up in time. Check the logs above.")
+        sys.exit(1)
 
-    print(f"Starting Blurt on {url} ...  (Ctrl+C to stop)")
-    import uvicorn
+    _present(url, server)
 
+
+def _present(url: str, server=None) -> None:
+    """Show Blurt: a native window by default, a browser tab on request/fallback.
+
+    Blocks until the user closes the window (or, in browser mode, until Ctrl+C).
+    """
+    if not _want_browser():
+        try:
+            from .desktop import open_window
+
+            stop = (lambda: setattr(server, "should_exit", True)) if server else None
+            open_window(url, on_closed=stop)
+            return
+        except Exception as e:  # backend missing or failed: fall back to a browser tab
+            print(f"Native window unavailable ({e}); opening your browser instead.")
+
+    webbrowser.open(url)
+    if server is None:  # attached to an already-running server; nothing to keep alive
+        return
+    print("Blurt is running. Press Ctrl+C to stop.")
     try:
-        uvicorn.run(create_app(), host=settings.host, port=settings.port, log_level="warning")
+        while not server.should_exit:
+            time.sleep(0.5)
     except KeyboardInterrupt:
+        server.should_exit = True
         sys.exit(0)
 
 

@@ -187,6 +187,7 @@ const el = {
   searchStatus: document.getElementById("search-status"),
   searchResults: document.getElementById("search-results"),
   cheatsheet: document.getElementById("cheatsheet"),
+  settings: document.getElementById("settings"),
   slashmenu: document.getElementById("slashmenu"),
   welcome: document.getElementById("welcome"),
   splash: document.getElementById("splash"),
@@ -829,24 +830,8 @@ function flashHint(msg) {
   }, 1600);
 }
 
-// Download the whole active stream as a Markdown file. The server already has an
-// always-current scratchpad.md on disk; this is the explicit "give me a copy now".
-async function exportMarkdown() {
-  let text;
-  try { const r = await fetch("/api/export/markdown"); if (!r.ok) return; text = await r.text(); }
-  catch { return; }
-  const d = new Date();
-  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `blurt-${stamp}.md`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  flashHint("saved a markdown copy");
-}
+// Note: there is intentionally no "export". Your notes are always mirrored to a plain
+// scratchpad.md on disk (see the File menu in the desktop app); that file IS the copy.
 
 // ---------------------------------------------------------------- cheatsheet
 // One key list, two presentations: written inline into the pad on first load
@@ -863,7 +848,6 @@ function keyListHtml() {
     [`${MOD}+c`, "copy the focused match"],
     [`esc`, "close the peek"],
     [`${MOD}+f`, "search"],
-    [`${MOD}+s`, "save a markdown copy"],
     [`ctrl+shift+d`, "dark / light"],
     [`?`, "this cheatsheet"],
   ];
@@ -919,6 +903,88 @@ function dismissWelcome() {
   el.welcome.hidden = true;
   el.welcome.innerHTML = "";
   return true;
+}
+
+// ---------------------------------------------------------------- settings
+// A small panel: where the scratchpad.md notes file lives (changeable), an update
+// check, and about. Folder picking needs the native dialog, so it goes through the
+// desktop app's pywebview bridge; in a plain browser that control is disabled.
+function settingsHtml(d) {
+  const hasPicker = !!(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder);
+  const changeBtn = hasPicker
+    ? `<button id="set-change">Change…</button>`
+    : `<button id="set-change" disabled title="available in the desktop app">Change…</button>`;
+  return `
+    <h3>settings</h3>
+    <div class="row">
+      <div class="label">notes folder</div>
+      <div class="value">
+        <span class="path" id="set-path">${escapeHtml(d.scratchpad_path || "")}</span>
+        ${changeBtn}
+      </div>
+      <div class="note">Your notes are mirrored here as plain Markdown, always up to date.
+        Point it at any folder (e.g. inside an Obsidian or Dropbox folder) to keep them there.</div>
+    </div>
+    <div class="row">
+      <div class="label">updates</div>
+      <div class="value">
+        <span class="path">blurt ${escapeHtml(d.version || "")}</span>
+        <button id="set-update">Check for updates</button>
+      </div>
+      <div class="note" id="set-update-result"></div>
+    </div>
+    <div class="row">
+      <div class="label">about</div>
+      <div class="note">A local-first scratchpad. MIT licensed.
+        <a href="https://github.com/rbsriram/blurt" target="_blank" rel="noopener noreferrer">github.com/rbsriram/blurt</a></div>
+    </div>`;
+}
+
+async function openSettings() {
+  let d = { scratchpad_path: "", version: "" };
+  try { d = await api.get("/api/settings"); } catch { /* show blanks */ }
+  el.settings.innerHTML = settingsHtml(d);
+  el.settings.hidden = false;
+  document.getElementById("set-change").onclick = changeNotesFolder;
+  document.getElementById("set-update").onclick = checkUpdates;
+  setTimeout(() => document.addEventListener("mousedown", onSettingsOutside), 0);
+}
+function onSettingsOutside(ev) { if (!el.settings.contains(ev.target)) closeSettings(); }
+function closeSettings() {
+  el.settings.hidden = true;
+  el.settings.innerHTML = "";
+  document.removeEventListener("mousedown", onSettingsOutside);
+}
+function toggleSettings() { el.settings.hidden ? openSettings() : closeSettings(); }
+
+async function changeNotesFolder() {
+  const folder = await window.pywebview.api.pick_folder();   // native dialog; null if cancelled
+  if (!folder) return;
+  const res = await api.post("/api/notes-dir", { path: folder });
+  if (res.ok && res.data) {
+    document.getElementById("set-path").textContent = res.data.scratchpad_path;
+    flashHint("notes folder updated");
+  } else {
+    flashHint("couldn't change that folder");
+  }
+}
+
+async function checkUpdates() {
+  const out = document.getElementById("set-update-result");
+  out.textContent = "checking…";
+  let d;
+  try { d = await api.get("/api/update-check"); } catch { out.textContent = "Couldn't reach GitHub."; return; }
+  if (d.error) { out.textContent = d.error; return; }
+  if (d.update_available) {
+    out.innerHTML = `Update available: <strong>${escapeHtml(d.latest)}</strong>` +
+      `<div class="cmd"><code>${escapeHtml(d.command)}</code><button id="set-copy">Copy</button></div>`;
+    document.getElementById("set-copy").onclick = () => {
+      navigator.clipboard && navigator.clipboard.writeText(d.command);
+      flashHint("command copied");
+    };
+  } else {
+    out.textContent = `You're on the latest version (${escapeHtml(d.current)}).`;
+  }
 }
 
 // ---------------------------------------------------------------- erase (test-only)
@@ -1069,9 +1135,9 @@ window.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "f" || ev.key === "F")) {
     ev.preventDefault(); el.searchOverlay.hidden ? openSearch() : closeSearch(); return;
   }
-  if ((ev.metaKey || ev.ctrlKey) && (ev.key === "s" || ev.key === "S")) {
-    ev.preventDefault(); exportMarkdown(); return;     // override the browser "save page" dialog
-  }
+  // Swallow Cmd/Ctrl+S so the browser's "save page" dialog never appears. There is no
+  // export to trigger: notes are continuously mirrored to scratchpad.md already.
+  if ((ev.metaKey || ev.ctrlKey) && (ev.key === "s" || ev.key === "S")) { ev.preventDefault(); return; }
   if (ev.ctrlKey && ev.shiftKey && (ev.key === "d" || ev.key === "D")) { ev.preventDefault(); toggleTheme(); return; }
   // `?` summons the cheatsheet — but only when not mid-note (so you can still
   // type a literal "?") and not while searching. If the inline welcome is up, `?`
@@ -1085,28 +1151,47 @@ window.addEventListener("keydown", (ev) => {
     // Esc closes search no matter where focus is (not just when the search input
     // holds it) — every action is a keystroke away.
     if (!el.searchOverlay.hidden) { ev.preventDefault(); closeSearch(); return; }
+    if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); return; }
     if (dismissWelcome()) { ev.preventDefault(); return; }
     if (!el.cheatsheet.hidden) { ev.preventDefault(); hideCheatsheet(); return; }
     if (state.cancelEdit) { ev.preventDefault(); state.cancelEdit(); return; }
   }
+  // Cmd/Ctrl+, opens Settings — the standard shortcut, and the path for a plain
+  // browser where there is no native menu to trigger it.
+  if ((ev.metaKey || ev.ctrlKey) && ev.key === ",") { ev.preventDefault(); toggleSettings(); return; }
 });
 
 // ---------------------------------------------------------------- boot
-// The new-notepad intro: "blurt" swells in the center, fades, and hands off to
-// the input with the keys written into the pad. It plays whenever the pad loads
-// BLANK — first ever run, or after an erase + reload — so an empty pad always
-// feels new. With any notes present it is skipped and you land straight in.
-function runSplash(then) {
+// The brand moment: "blurt" swells in the center, then fades to the UI. It plays on
+// EVERY load so each launch feels like opening the app. Two flavors:
+//   - blank pad (first run, or after erase): the full swell, then the keys are
+//     written into the pad as a one-time tutorial.
+//   - any notes present: a quick flash only, no tutorial, so a returning user is
+//     not made to wait or re-read the keys.
+function runSplash(then, { quick = false } = {}) {
   el.splash.hidden = false;
+  el.splash.classList.toggle("quick", quick);
   requestAnimationFrame(() => el.splash.classList.add("run"));
-  setTimeout(() => { el.splash.hidden = true; if (then) then(); }, 1850);
+  setTimeout(() => {
+    el.splash.hidden = true;
+    el.splash.classList.remove("run", "quick");   // reset so it can replay (e.g. after erase)
+    if (then) then();
+  }, quick ? 950 : 1850);
 }
-function newPadIntro() { runSplash(() => showWelcome()); }
+function newPadIntro() { runSplash(() => showWelcome()); }   // splash + keys, blank pad
+function brandFlash() { runSplash(null, { quick: true }); }  // splash only, returning load
+
+// Hooks for the native macOS menu (Help, View) so it drives the app's own features
+// rather than duplicating them.
+window.__blurtHelp = () => showCheatsheet();
+window.__blurtTheme = () => toggleTheme();
+window.__blurtSettings = () => toggleSettings();
 
 el.compose.value = localStorage.getItem(DRAFT_KEY) || "";
 autoGrow();
 focusComposeEnd();
 initErase();
 loadStream(true).then(() => {
-  if (!el.stream.querySelector(".entry") && !el.compose.value.trim()) newPadIntro();
+  const blank = !el.stream.querySelector(".entry") && !el.compose.value.trim();
+  blank ? newPadIntro() : brandFlash();
 });
