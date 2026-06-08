@@ -14,6 +14,11 @@
        server runs with BLURT_TESTING=1 (status.testing). -->
   <button id="erase" hidden>erase</button>
 
+  <!-- One-line top banner, shown only while Ollama is unreachable so the silent loss of
+       smart search is visible. "Ollama" links to the install. Auto-clears the moment Ollama
+       is up (app.js refreshSemanticStatus). Capture and exact search work without it. -->
+  <div id="ollama-bar" role="status" aria-live="polite" hidden></div>
+
   <main id="app">
     <!-- newest entry nearest the input (column-reverse) -->
     <div id="stream" aria-label="your notes"></div>

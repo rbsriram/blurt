@@ -754,3 +754,16 @@ broken `↑` afterward. New model:
   suggest 500 -> 200 empty). Added two offline regression tests (`_DeadEmbedder` stub) so a
   semantic failure can never again sink exact search. Note: the peek itself still needs Ollama
   running, that is by design (it is the semantic feature); the bug was exact search dying with it.
+
+### 52. Surface "Ollama down" in the UI, not just the terminal (owner, end-user test)
+- The deeper issue behind #51: a real user launches the app (never sees the terminal's
+  "needs Ollama" line), types, and the peek silently never appears, leaving them to wonder if
+  blurt is broken. Silent degradation of the core feature is the actual bug.
+- Fix: one faint top banner (`#ollama-bar`), shown only while `/api/status` reports Ollama
+  unreachable, reading **"peek is off until Ollama is running."** with **Ollama** as the only
+  link (to ollama.com/download). Polled on boot and every 15s, so it clears itself within
+  ~15s of Ollama coming up, no reload. No dismiss button: it is purely a live mirror of state,
+  and vanishes the moment the state is fixed. Owner steered the design hard here: it started as
+  a full-screen overlay with body copy and a "keep going" dismiss, trimmed to a single faint
+  line per their call. Copy leans into blurt's own word, "peek", not generic "smart search".
+  Sits at z-index 40, under the splash (50), so the brand flash still plays first.

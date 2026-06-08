@@ -192,6 +192,7 @@ const el = {
   welcome: document.getElementById("welcome"),
   splash: document.getElementById("splash"),
   erase: document.getElementById("erase"),
+  ollamaBar: document.getElementById("ollama-bar"),
 };
 
 const state = {
@@ -1019,6 +1020,24 @@ async function onErase() {
   newPadIntro();        // wiped clean → replay the new-notepad intro
 }
 
+// --------------------------------------------------- smart-search (Ollama) banner
+// The ghost/peek is purely semantic, so when Ollama is unreachable it silently does
+// nothing, and a real user never sees the terminal warning. Surface it as one faint
+// top line that links to the Ollama install, and clear it the moment Ollama is up.
+async function refreshSemanticStatus() {
+  let status;
+  try {
+    status = await api.get("/api/status");
+  } catch { return; }  // server unreachable: leave the banner as-is
+  if (status && status.ollama_connected) { el.ollamaBar.hidden = true; return; }
+  if (!el.ollamaBar.innerHTML) {
+    el.ollamaBar.innerHTML =
+      'peek is off until <a href="https://ollama.com/download" target="_blank" ' +
+      'rel="noopener noreferrer">Ollama</a> is running.';
+  }
+  el.ollamaBar.hidden = false;
+}
+
 async function initErase() {
   try {
     const status = await api.get("/api/status");
@@ -1191,6 +1210,8 @@ el.compose.value = localStorage.getItem(DRAFT_KEY) || "";
 autoGrow();
 focusComposeEnd();
 initErase();
+refreshSemanticStatus();
+setInterval(refreshSemanticStatus, 15000);  // auto-clear once Ollama is reachable
 loadStream(true).then(() => {
   const blank = !el.stream.querySelector(".entry") && !el.compose.value.trim();
   blank ? newPadIntro() : brandFlash();
