@@ -132,13 +132,13 @@ def main() -> None:
 
     # Already running in another process? Attach a window (or tab) to it and stop.
     if _get(f"{url}/api/status", timeout=0.5) is not None:
-        print(f"Blurt is already running at {url}")
+        print("Blurt is already running.")
         _present(url)
         return
 
     _ensure_model()
 
-    print(f"Starting Blurt on {url} ...")
+    print("Starting Blurt ...")
     from .desktop import serve_in_background
 
     server = serve_in_background(create_app(), settings.host, settings.port)
