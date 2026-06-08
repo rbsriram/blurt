@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Bootstrap launcher for the non-pip install paths (install.sh and the Homebrew
-# tap). It builds an isolated venv from the bundled source on first run, then hands
+# Bootstrap launcher for the non-pip install path (install.sh). It builds an
+# isolated venv from the bundled source on first run, then hands
 # off to the `blurt` command (blurt/cli.py), which checks Ollama, starts the server,
 # and opens Blurt in its own window (adding it to Applications on macOS). If you have
 # pipx, `pipx install blurt` is simpler and skips all of this.

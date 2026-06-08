@@ -521,8 +521,11 @@ broken `↑` afterward. New model:
   formula from source, and even a no-compile formula fails that preflight. Pivoted to a
   Python `blurt` console command (`blurt/cli.py`: checks Ollama, opens the browser,
   starts the server) so `pipx install git+https://github.com/rbsriram/blurt` just works,
-  cross-platform, no compiler. A curl `install.sh` and the `rbsriram/homebrew-blurt` tap
-  remain as secondary options (both bootstrap a venv and hand off to the same `blurt`).
+  cross-platform, no compiler. A curl `install.sh` remains as a secondary option (it
+  bootstraps a venv and hands off to the same `blurt`). The `rbsriram/homebrew-blurt` tap
+  was created early in this exploration and later **deleted**: the formula never installed
+  on the owner's own machine (the Xcode preflight above), and pipx is the committed path,
+  so an orphaned tap was only confusing.
 - Packaging bugs found and fixed: (a) static UI + db/schema.sql were not bundled in the
   wheel — added `[tool.setuptools.package-data]`; (b) a stale `build/` dir had been
   committed and setuptools used it as the build staging dir, shipping wrong versions —
@@ -530,8 +533,8 @@ broken `↑` afterward. New model:
 
 ### 41. Public positioning: "scratchpad", README hero, demo GIF (owner)
 - Word is **scratchpad**, not notepad (the owner's word, more distinctive, the category
-  the product is built around). Swapped it in the GitHub description, pyproject, and the
-  tap. README keeps "the dumbest notepad you have ever seen" (a visual metaphor in the
+  the product is built around). Swapped it in the GitHub description and pyproject.
+  README keeps "the dumbest notepad you have ever seen" (a visual metaphor in the
   owner's story). Headline tagline: **just type. it remembers.**
 - README leads with a dark-mode **demo GIF** (`docs/demo.gif`) recorded with Playwright
   driving the real app (multi-match peek + in-place edit, credential-free seed) and
