@@ -697,3 +697,17 @@ broken `↑` afterward. New model:
   so first-run auto-add does not resurrect a bundle the user deliberately deleted (`blurt
   install-app` adds it back on purpose). `blurt uninstall` clears the marker so a future fresh
   install adds it again.
+
+### 49. Cut a real v1.1.0 release; fix the README's pipx/Ollama cliff (owner, end-user test)
+- Owner installed Blurt as a fresh end user and hit two snags the README glossed over:
+  `pipx` was not installed (README led with it as "the easy way" but never said how to get
+  it), and Ollama is a hard prerequisite shown only as a bare link. Fixed the README: Ollama
+  is step 1 with a real command (`brew install ollama` or the download), and a "no pipx?
+  install it once" block precedes the install command.
+- Found a release gap while in there: `pyproject` and STATE said **v1.1.0**, but there was
+  **no `v1.1.0` tag or GitHub release**, and `install.sh` was pinned to **v1.0.3**. So
+  `pipx install git+...` served current `main`, but the curl installer and tarball paths
+  silently served months-old code. Fixed by tagging + releasing **v1.1.0** and bumping
+  `install.sh` to match. Release ritual going forward: bump `pyproject` version, tag `vX.Y.Z`,
+  cut the GitHub release, and bump `install.sh`'s `VERSION` pin in the same motion so the
+  non-pip paths never go stale again.
