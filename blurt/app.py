@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
         use_prefixes=settings.embed_use_prefixes,
         timeout_s=settings.embed_timeout_s,
         keep_alive=settings.embed_keep_alive,
+        pull_timeout_s=settings.embed_pull_timeout_s,
     )
     indexer = Indexer(db, embedder, settings)
     indexer.start()

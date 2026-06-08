@@ -192,6 +192,7 @@ const el = {
   welcome: document.getElementById("welcome"),
   splash: document.getElementById("splash"),
   erase: document.getElementById("erase"),
+  ollamaGate: document.getElementById("ollama-gate"),
   ollamaBar: document.getElementById("ollama-bar"),
 };
 
@@ -927,6 +928,10 @@ function settingsHtml(d) {
         Point it at any folder (e.g. inside an Obsidian or Dropbox folder) to keep them there.</div>
     </div>
     <div class="row">
+      <div class="label">smart search engine</div>
+      <div class="note" id="set-engine">${engineStatusHtml(lastStatus)}</div>
+    </div>
+    <div class="row">
       <div class="label">updates</div>
       <div class="value">
         <span class="path">blurt ${escapeHtml(d.version || "")}</span>
@@ -1020,22 +1025,75 @@ async function onErase() {
   newPadIntro();        // wiped clean → replay the new-notepad intro
 }
 
-// --------------------------------------------------- smart-search (Ollama) banner
-// The ghost/peek is purely semantic, so when Ollama is unreachable it silently does
-// nothing, and a real user never sees the terminal warning. Surface it as one faint
-// top line that links to the Ollama install, and clear it the moment Ollama is up.
-async function refreshSemanticStatus() {
-  let status;
-  try {
-    status = await api.get("/api/status");
-  } catch { return; }  // server unreachable: leave the banner as-is
-  if (status && status.ollama_connected) { el.ollamaBar.hidden = true; return; }
-  if (!el.ollamaBar.innerHTML) {
-    el.ollamaBar.innerHTML =
-      'peek is off until <a href="https://ollama.com/download" target="_blank" ' +
-      'rel="noopener noreferrer">Ollama</a> is running.';
+// --------------------------------------------------- smart-search (Ollama) health
+// The peek runs on a local model (Ollama + nomic-embed-text), like a voice app leaning on
+// a local STT model. So the pad is GATED on first launch until that engine is ready, which
+// avoids saving notes that can't be indexed. Once healthy, an Ollama drop is non-blocking:
+// capture and exact search carry on, the peek resumes (and the backlog re-indexes) when it
+// returns. /api/status is the single source of truth; the indexer self-heals the backend.
+let everHealthy = false;
+let lastHealthHtml = "";
+let healthTimer = null;
+let lastStatus = null;     // most recent /api/status, so Settings can show the engine state
+
+const OLLAMA_LINK =
+  '<a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Ollama</a>';
+
+function healthMessage(status) {
+  if (!status || !status.ollama_connected) return `peek is off until ${OLLAMA_LINK} is running.`;
+  return "setting up peek (downloading the model, one time)…";  // Ollama up, model still landing
+}
+
+function applyHealthUI(status) {
+  const healthy = !!(status && status.ollama_connected && status.embed_model_available);
+  if (healthy) {
+    everHealthy = true;
+    el.ollamaGate.hidden = true;
+    el.ollamaBar.hidden = true;
+    el.ollamaBar.classList.remove("gated");
+    if (el.compose.disabled) { el.compose.disabled = false; focusComposeEnd(); }
+    renderEngineStatus(status);
+    return;
   }
+  const html = healthMessage(status);
+  if (html !== lastHealthHtml) { el.ollamaBar.innerHTML = html; lastHealthHtml = html; }
+  const blocking = !everHealthy;            // hard gate only before the engine is first ready
+  el.ollamaGate.hidden = !blocking;
+  el.ollamaBar.classList.toggle("gated", blocking);
   el.ollamaBar.hidden = false;
+  el.compose.disabled = blocking;           // can't type into a pad whose notes couldn't index
+  renderEngineStatus(status);
+}
+
+async function refreshSemanticStatus() {
+  let status = null;
+  try { status = await api.get("/api/status"); } catch { /* server momentarily unreachable */ }
+  if (status) applyHealthUI(status);
+  // Poll briskly while degraded so the gate clears fast once Ollama is up; relax when healthy.
+  clearTimeout(healthTimer);
+  const healthy = status && status.ollama_connected && status.embed_model_available;
+  healthTimer = setTimeout(refreshSemanticStatus, healthy ? 15000 : 3000);
+}
+
+// The engine readout in Settings: Ollama reachability, the embedding model, and any
+// catch-up indexing. Updated live on every poll if the Settings panel is open.
+function engineStatusHtml(status) {
+  const ollama = status && status.ollama_connected
+    ? "<b>Ollama</b> running"
+    : `<b>Ollama</b> not running &middot; ${OLLAMA_LINK}`;
+  let model;
+  if (!status || !status.ollama_connected) model = "model <b>nomic-embed-text</b> —";
+  else if (status.embed_model_available) model = "model <b>nomic-embed-text</b> ready";
+  else model = "model <b>nomic-embed-text</b> downloading…";
+  const pending = status && status.indexing_pending
+    ? ` &middot; ${status.indexing_pending} note(s) catching up` : "";
+  return `${ollama}<br>${model}${pending}`;
+}
+
+function renderEngineStatus(status) {
+  lastStatus = status;
+  const node = document.getElementById("set-engine");
+  if (node) node.innerHTML = engineStatusHtml(status);
 }
 
 async function initErase() {
@@ -1210,8 +1268,7 @@ el.compose.value = localStorage.getItem(DRAFT_KEY) || "";
 autoGrow();
 focusComposeEnd();
 initErase();
-refreshSemanticStatus();
-setInterval(refreshSemanticStatus, 15000);  // auto-clear once Ollama is reachable
+refreshSemanticStatus();   // self-schedules its next poll (brisk while degraded, relaxed when healthy)
 loadStream(true).then(() => {
   const blank = !el.stream.querySelector(".entry") && !el.compose.value.trim();
   blank ? newPadIntro() : brandFlash();

@@ -64,6 +64,11 @@ class Settings:
     embed_batch_size: int = field(default_factory=lambda: _env_int("EMBED_BATCH_SIZE", 48))
     # How many queued entries the worker may gather into one bulk pass.
     index_drain_cap: int = field(default_factory=lambda: _env_int("INDEX_DRAIN_CAP", 256))
+    # How often the indexer's self-heal pass runs: pull the model if Ollama just appeared,
+    # and re-enqueue any notes saved while it was down so the index recovers without a restart.
+    reconcile_interval_s: float = field(default_factory=lambda: _env_float("RECONCILE_INTERVAL_S", 8.0))
+    # A model pull moves ~270MB once, so it needs a far longer ceiling than an embed call.
+    embed_pull_timeout_s: float = field(default_factory=lambda: _env_float("EMBED_PULL_TIMEOUT_S", 900.0))
 
     # --- Optional LLM synthesis (off by default; user opts in) ---
     chat_enabled: bool = field(default_factory=lambda: _env_bool("CHAT_ENABLED", False))

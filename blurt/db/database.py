@@ -232,6 +232,21 @@ class Database:
                 "INSERT INTO vec_chunks(rowid, embedding) VALUES (?, ?)", (r["id"], r["embedding"])
             )
 
+    def unindexed_active_ids(self, limit: int) -> list[int]:
+        """Active entries that have no chunks yet, oldest first.
+
+        A note with content always yields at least one chunk once embedded, so "no
+        chunks" means "not indexed". The self-heal pass uses this to re-embed notes
+        that were saved while Ollama was unavailable, the moment it returns.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id FROM entries WHERE is_superseded = 0 "
+                "AND id NOT IN (SELECT entry_id FROM chunks) ORDER BY id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [r["id"] for r in rows]
+
     def lexical_search(self, query: str, limit: int) -> list[dict]:
         """Exact (case-insensitive) substring match over active entries.
 

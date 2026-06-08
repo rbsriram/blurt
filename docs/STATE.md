@@ -31,6 +31,11 @@ tested, and linted.
 - **Front end:** bottom-pinned capture, the keyboard-browsable peek, in-place note
   editing, arrow-navigable search, checklists, list auto-continuation, a `/`
   formatting menu, auto-linked URLs, Markdown export, and a `?` cheatsheet.
+- **Smart-search engine state:** the pad is gated on first launch until Ollama + the
+  embedding model are ready (so notes are never saved unindexable); after that an Ollama
+  drop is non-blocking (capture + exact search continue, the peek resumes on recovery).
+  The indexer self-heals: it pulls the model if Ollama appears without it, and re-indexes
+  any backlog. Settings shows the live engine status. See DECISIONS #53.
 - **Tests:** offline unit suite plus a full integration suite (the latter needs a
   live Ollama). Lint clean. CI runs lint + import smoke + unit tests.
 

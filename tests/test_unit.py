@@ -15,6 +15,7 @@ from blurt.config import Settings
 from blurt.core.checklist import set_checkbox
 from blurt.core.chunker import chunk_text
 from blurt.core.exporter import render_stream_markdown
+from blurt.core.indexer import Indexer
 from blurt.core.retriever import Retriever
 from blurt.db import Database
 
@@ -151,6 +152,29 @@ def test_suggest_is_empty_when_embeddings_fail(db):
     db.add_entry("my tailscale ip is 100.71.171.89 for my mac mini")
     result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).suggest("my tailscale is down"))
     assert result == {"match": None, "score": 0.0, "more": 0, "matches": []}
+
+
+def test_unindexed_active_ids_finds_only_chunkless_active(db):
+    # The self-heal pass re-indexes active notes that have no chunks (saved while Ollama
+    # was down). Indexed and superseded notes must be excluded.
+    a = db.add_entry("saved while ollama was down")
+    b = db.add_entry("already indexed")
+    db.add_chunks(b["id"], [(0, "already indexed", vec(1.0))])
+    c = db.add_entry("superseded note")
+    db.supersede_entry(c["id"])
+    ids = db.unindexed_active_ids(10)
+    assert a["id"] in ids
+    assert b["id"] not in ids
+    assert c["id"] not in ids
+
+
+def test_indexer_enqueue_dedupes(db):
+    # reconcile re-enqueues backlog every pass, so a note already queued must not pile up.
+    idx = Indexer(db, _DeadEmbedder(), Settings())
+    idx.enqueue(1)
+    idx.enqueue(1)
+    idx.enqueue(2)
+    assert idx.pending() == 2
 
 
 def test_supersede_missing_returns_false(db):

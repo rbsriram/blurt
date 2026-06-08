@@ -14,9 +14,12 @@
        server runs with BLURT_TESTING=1 (status.testing). -->
   <button id="erase" hidden>erase</button>
 
-  <!-- One-line top banner, shown only while Ollama is unreachable so the silent loss of
-       smart search is visible. "Ollama" links to the install. Auto-clears the moment Ollama
-       is up (app.js refreshSemanticStatus). Capture and exact search work without it. -->
+  <!-- Smart-search engine state (app.js refreshSemanticStatus, driven by /api/status):
+       - On first launch the pad is GATED until Ollama is reachable and the model is ready
+         (#ollama-gate dims the pad; the pill below sits centered over it).
+       - Once it has been healthy, an Ollama drop only shows the pill (non-blocking): capture
+         and exact search keep working, the peek resumes when Ollama returns. -->
+  <div id="ollama-gate" hidden></div>
   <div id="ollama-bar" role="status" aria-live="polite" hidden></div>
 
   <main id="app">
