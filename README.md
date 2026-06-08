@@ -21,7 +21,7 @@ typed the same words. It just gets it.
 
 ## Why I built this
 
-I am not a coder. I am a person with a brain that leaks.
+I am a person with a brain that leaks.
 
 I have tried every notes app. They are all junk drawers. You dump things in, and
 three weeks later you are scrolling like a maniac looking for the wifi password
@@ -98,7 +98,8 @@ thumb: capture stays instant, the UI stays quiet, and nothing phones home.
 
 ## Built by
 
-Sriram ([@rbsriram](https://github.com/rbsriram)), who still cannot code and is
-delighted about it.
+Sriram ([@rbsriram](https://github.com/rbsriram)) and
+[Claude Code](https://claude.com/claude-code). Sriram had the idea and made every
+call. Claude did a lot of the typing. Good team.
 
 MIT licensed. Take it, fork it, make it weirder.
