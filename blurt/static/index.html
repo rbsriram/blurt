@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Blurt</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Bottom-pinned layout (UX.md §1): stream scrolls up, input fixed at the
+       bottom, the peek sits between them and is empty unless there are matches. -->
+  <!-- Test-only: wipes all notes so the pad can be used fresh. Hidden unless the
+       server runs with BLURT_TESTING=1 (status.testing). -->
+  <button id="erase" hidden>erase</button>
+
+  <main id="app">
+    <!-- newest entry nearest the input (column-reverse) -->
+    <div id="stream" aria-label="your notes"></div>
+
+    <!-- first-load cheatsheet, written inline into the pad; clears on first keystroke -->
+    <div id="welcome" hidden></div>
+
+    <!-- the peek: keyboard-browsable, inline, collapses to nothing when empty -->
+    <div id="peek" aria-live="polite"></div>
+
+    <div id="inputbar">
+      <!-- slash menu: type "/" at the start of a line to insert formatting -->
+      <div id="slashmenu" hidden></div>
+      <textarea id="compose" rows="1" placeholder="just type."
+                autocomplete="off" autocapitalize="off" spellcheck="false" autofocus></textarea>
+      <div id="inputhint"></div>
+    </div>
+  </main>
+
+  <!-- Search: summoned by the top button or cmd/ctrl+f, arrow-navigable, esc closes. -->
+  <div id="search-overlay" hidden>
+    <div id="search-panel">
+      <input id="search-input" type="text" placeholder="search"
+             autocomplete="off" spellcheck="false" />
+      <div id="search-status"></div>
+      <div id="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Cheatsheet: shown after the first-load splash, then only on `?`. -->
+  <div id="cheatsheet" hidden></div>
+
+  <!-- First-load brand moment: "blurt" swells in the center, then fades to the UI. -->
+  <div id="splash" hidden><span class="word">blurt</span></div>
+
+  <div id="anchor">/</div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

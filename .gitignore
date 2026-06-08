@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Blurt data (your notes live here; never commit them)
+*.db
+*.db-shm
+*.db-wal
+blurt.db*
+scratchpad.md
+scratchpad.md.tmp
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
