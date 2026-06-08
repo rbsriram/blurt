@@ -86,6 +86,35 @@ def _offer_desktop_app() -> None:
         print(f"Added blurt to your Applications ({created.name}). Look for it in Launchpad.")
 
 
+def _should_handoff() -> bool:
+    """True when `blurt` should re-launch through blurt.app instead of opening a window
+    itself, so the dock shows blurt's icon and name rather than the host Python's. False
+    once we are inside the bundle (LaunchServices sets __CFBundleIdentifier), in browser
+    mode, off macOS, or when the bundle is not installed."""
+    from .installer import is_installed
+
+    return (
+        sys.platform == "darwin"
+        and not _want_browser()
+        and not os.environ.get("__CFBundleIdentifier")
+        and is_installed()
+    )
+
+
+def _open_app_bundle() -> bool:
+    """Launch blurt.app and return whether it started. LaunchServices stamps the process with
+    blurt's bundle identity, so the dock icon and name are correct. Returns False if `open`
+    fails, so the caller can fall back to an in-process window."""
+    from .installer import app_path
+
+    try:
+        subprocess.run(["open", str(app_path())], check=True)
+    except Exception:
+        return False
+    print("Opening Blurt ...")
+    return True
+
+
 def _uninstall_command() -> None:
     """Remove the app and leave the notes alone. Your scratchpad stays where it is; if you
     ever want it gone, delete the folder yourself. The package goes via pip/pipx."""
@@ -124,6 +153,15 @@ def main() -> None:
         return
 
     _offer_desktop_app()
+
+    # On macOS, re-launch through blurt.app so the running process carries blurt's identity
+    # (dock icon + name), not the host Python's. Pull the model first so its one-time download
+    # and any Ollama hint stay visible here in the terminal. If the bundle is missing or `open`
+    # fails, fall through and open the window in-process as before.
+    if _should_handoff():
+        _ensure_model()
+        if _open_app_bundle():
+            return
 
     from .app import create_app
     from .config import settings

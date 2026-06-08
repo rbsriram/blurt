@@ -712,15 +712,21 @@ broken `↑` afterward. New model:
   cut the GitHub release, and bump `install.sh`'s `VERSION` pin in the same motion so the
   non-pip paths never go stale again.
 
-### 50. Fix the dock icon (Python rocket -> blurt) and drop the IP from the launch line (owner)
-- Launching `blurt` from a shell runs a bare Python process, so the dock showed the generic
-  Python rocket icon (and the hover label "Python"). `_brand_macos_app` already fixed the
-  *menu-bar* name via the in-memory bundle dict, but nothing set the *dock* icon. Added
-  `_set_dock_icon`: on the main thread, after the window is shown, load `assets/Blurt.icns`
-  and call `NSApplication.setApplicationIconImage_`. Double-clicking `blurt.app` was always
-  correct (real bundle); this only fixes the terminal-launch path. The hover *name* can still
-  read "Python" un-bundled (the Dock reads it from the on-disk bundle, not the in-memory
-  override); the icon is the visible fix and double-clicking the app avoids it entirely.
+### 50. `blurt` hands off to blurt.app so the dock identity is right; drop the IP from the launch line (owner)
+- Launching `blurt` from a shell ran a bare Python process, so the dock showed the generic
+  Python rocket icon AND the hover label "Python". Worse, typing `blurt` (rocket) and then
+  opening blurt.app gave two separate dock icons, two identities for one app. The documented
+  first-run is literally `pipx install ... && blurt`, so the terminal path is the path that
+  has to look right; "just double-click the app instead" is not an answer.
+- Real fix: on macOS, `blurt` now re-launches through blurt.app via `open` (`_should_handoff`
+  / `_open_app_bundle` in cli.py). LaunchServices stamps the process with blurt's bundle
+  identity, so the dock shows blurt's icon and name, identical to double-clicking, and there
+  is only ever one instance. The bundle re-enters the launcher with `__CFBundleIdentifier`
+  set (LaunchServices), which is the signal to stop handing off and run in-process. The model
+  pull / Ollama hint runs in the terminal *before* the handoff so its one-time output stays
+  visible. Falls back to the in-process window if the bundle is missing (user trashed it) or
+  `open` fails. `_set_dock_icon` (set the app icon image on the main thread) stays as a
+  belt-and-suspenders for that fallback path.
 - Dropped the `http://127.0.0.1:7337` from the "Starting Blurt ..." and "already running"
   lines: a localhost IP printed at a non-coder reads as scary/technical for zero benefit
   (browser mode opens the URL automatically anyway).
