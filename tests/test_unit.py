@@ -5,14 +5,17 @@ live server + Ollama). These cover the pure logic and the storage layer so
 regressions are caught without external services.
 """
 
+import asyncio
 import os
 
 import pytest
 
 from blurt.api.schemas import CheckboxToggle, EntryCreate, QueryRequest
+from blurt.config import Settings
 from blurt.core.checklist import set_checkbox
 from blurt.core.chunker import chunk_text
 from blurt.core.exporter import render_stream_markdown
+from blurt.core.retriever import Retriever
 from blurt.db import Database
 
 DIM = 8
@@ -119,6 +122,35 @@ def test_lexical_search_finds_exact_only_active(db):
     hits = db.lexical_search("REF-0042", 10)
     assert [h["id"] for h in hits] == [keep["id"]]
     assert db.lexical_search("REF-0099", 10) == []  # superseded excluded
+
+
+# ---- retriever degrades to exact search when Ollama is down -----------
+
+class _DeadEmbedder:
+    """Stands in for Ollama being unreachable: every embed call raises."""
+
+    async def embed_query(self, text):
+        raise RuntimeError("ollama down")
+
+    async def embed_document_one(self, text):
+        raise RuntimeError("ollama down")
+
+
+def test_query_returns_exact_matches_when_embeddings_fail(db):
+    # Invariant: exact-text search is instant regardless of Ollama. A semantic failure
+    # must never sink the query and discard the lexical hits it already had.
+    db.add_entry("my tailscale ip is 100.71.171.89 for my mac mini")
+    db.add_entry("tomorrow meeting with david at 3 pm")
+    result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).query("tailscale"))
+    contents = [e["content"] for e in result["entries"]]
+    assert any("tailscale" in c for c in contents)
+
+
+def test_suggest_is_empty_when_embeddings_fail(db):
+    # The peek is purely semantic, so Ollama being down yields nothing, never a 500.
+    db.add_entry("my tailscale ip is 100.71.171.89 for my mac mini")
+    result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).suggest("my tailscale is down"))
+    assert result == {"match": None, "score": 0.0, "more": 0, "matches": []}
 
 
 def test_supersede_missing_returns_false(db):

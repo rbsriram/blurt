@@ -739,3 +739,18 @@ broken `↑` afterward. New model:
 - Dropped the `http://127.0.0.1:7337` from the "Starting Blurt ..." and "already running"
   lines: a localhost IP printed at a non-coder reads as scary/technical for zero benefit
   (browser mode opens the URL automatically anyway).
+
+### 51. Exact search must survive Ollama being down (owner, end-user test)
+- Owner (Ollama not running on the test machine) searched a word that was literally in three
+  notes and got "no matches"; the peek never appeared either. Root cause: `Retriever.query`
+  computed the exact/lexical hits first but then `await embed_query(q)` for the semantic step,
+  and with Ollama unreachable that line raised, so the whole request 500'd and the lexical
+  hits it already had were thrown away. This violated the stated invariant that exact-text
+  search is instant regardless of Ollama. `suggest` (the peek) had the same fragility: a 500
+  on every keystroke instead of just showing nothing.
+- Fix: the semantic step is now best-effort in both paths. `query` wraps embed+knn in
+  try/except and falls back to lexical-only on failure; `suggest` returns empty. Reproduced
+  with `BLURT_OLLAMA_URL=http://localhost:1` (query went 500 -> 200 with the exact hits;
+  suggest 500 -> 200 empty). Added two offline regression tests (`_DeadEmbedder` stub) so a
+  semantic failure can never again sink exact search. Note: the peek itself still needs Ollama
+  running, that is by design (it is the semantic feature); the bug was exact search dying with it.
