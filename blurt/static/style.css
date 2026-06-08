@@ -315,26 +315,53 @@ body {
 #inputhint .undo-link { color: var(--accent); cursor: pointer; }
 #inputhint .undo-link:hover { text-decoration: underline; }
 
-/* --- smart-search banner: one faint line pinned to the top, only while Ollama is
-   unreachable. "Ollama" links to the install; it clears itself once Ollama is up. --- */
+/* --- smart-search banner: a floating pill below the title bar, only while Ollama is
+   unreachable. A soft accent glow and a slow pulsing dot make it catch the eye without
+   shouting. "Ollama" links to the install; it clears itself once Ollama is up. --- */
 #ollama-bar {
   position: fixed;
-  top: 0; left: 0; right: 0;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 40;             /* under the splash (50) so the brand flash plays first */
-  padding: 6px 16px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 17px;
   font-size: 12.5px;
   color: var(--muted);
-  background: var(--panel);
-  border-bottom: 1px solid var(--faint);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--panel);
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+  animation: ollama-breathe 3.6s ease-in-out infinite;
 }
 #ollama-bar[hidden] { display: none; }
+#ollama-bar::before {           /* the pulsing status dot */
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+  animation: ollama-pulse 2.2s ease-in-out infinite;
+}
 #ollama-bar a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent); }
 #ollama-bar a:hover { background: var(--highlight); }
+
+/* The glow "breathes" very slowly, and the dot fades in and out: subtle motion that
+   draws the eye, off entirely for anyone who prefers reduced motion. */
+@keyframes ollama-breathe {
+  0%, 100% { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16); }
+  50%      { box-shadow: 0 2px 14px rgba(0, 0, 0, 0.20), 0 0 14px 1px rgba(120, 165, 210, 0.18); }
+}
+@keyframes ollama-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #ollama-bar, #ollama-bar::before { animation: none; }
+}
 
 /* --- markdown inside entries / results --- */
 .entry-body h1, .entry-body h2, .entry-body h3,
