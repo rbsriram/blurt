@@ -1040,7 +1040,9 @@ const OLLAMA_LINK =
   '<a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Ollama</a>';
 
 function healthMessage(status) {
-  if (!status || !status.ollama_connected) return `peek is off until ${OLLAMA_LINK} is running.`;
+  // Reads right whether Ollama is missing, stopped, or just starting; the link goes to the
+  // install either way (we can't tell "not installed" from "not running" — both unreachable).
+  if (!status || !status.ollama_connected) return `blurt needs ${OLLAMA_LINK} to think.`;
   return "setting up peek (downloading the model, one time)…";  // Ollama up, model still landing
 }
 
