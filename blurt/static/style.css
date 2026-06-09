@@ -308,6 +308,7 @@ body {
 .slash-item .slash-label { color: var(--fg); }
 .slash-item .slash-syntax { color: var(--muted); font-size: 12px; }
 #compose-row { display: flex; align-items: flex-end; gap: 6px; }
+#compose-row[hidden] { display: none; }   /* the id rule above beats the default [hidden]; restore it */
 #compose {
   flex: 1;
   min-width: 0;
