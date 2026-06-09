@@ -240,6 +240,21 @@ def test_ambiguous_numeric_date_follows_chosen_order():
 
 
 @pytest.mark.parametrize("text", [
+    "june 1", "jun 1", "june1", "jun1", "1 june", "1june", "1st jun", "1st june", "jun 1st",
+])
+def test_month_name_day_formats_all_resolve(text):
+    # Spaced, glued, abbreviated, ordinal: all read as June 1 of the current year.
+    assert anchor_dates(text, TODAY) == ["2026-06-01"]
+
+
+def test_month_day_without_year_is_current_year_not_next():
+    # June 1 is before TODAY (Jun 10); it should stay this year, findable by search,
+    # not jump to next year.
+    assert anchor_dates("jun 1", TODAY) == ["2026-06-01"]
+    assert query_ranges("jun 1", TODAY) == [("2026-06-01", "2026-06-01")]
+
+
+@pytest.mark.parametrize("text", [
     "meeting David at five",        # bare number is not a date (precision over recall)
     "we may go there",              # bare month word without a day number
     "see you at 9pm",               # time of day is left to the verbatim text

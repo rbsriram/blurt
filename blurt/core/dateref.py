@@ -183,22 +183,14 @@ def _h_iso(m, t):
 
 
 def _resolve_md(month: int, day: int, year_grp: str | None, t: date):
-    if year_grp:
-        year = int(year_grp)
-    else:
-        # No year given: assume the nearest upcoming occurrence (this year, or
-        # next if it already passed). Matches how people read "see you Jun 15".
-        year = t.year
+    # No year given: read it as that day THIS year. Predictable for both writing
+    # ("jun 1" = this June 1) and searching (you find this year's June 1, not next
+    # year's). Type the year explicitly to mean a different one.
+    year = int(year_grp) if year_grp else t.year
     try:
-        d = date(year, month, day)
+        return (date(year, month, day),) * 2
     except ValueError:
         return None
-    if not year_grp and d < t:
-        try:
-            d = date(year + 1, month, day)
-        except ValueError:
-            return None
-    return (d, d)
 
 
 def _h_month_day(m, t):
@@ -217,8 +209,8 @@ _PATTERNS: list[tuple[re.Pattern, object]] = [
     (re.compile(r"\b(?:the\s+)?(?P<d>\d{1,2})(?:st|nd|rd|th)?\s+of\s+(?P<q>this|next|last)\s+month\b", re.I), _h_nth_of_month),
     (re.compile(r"\b(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})\b"), _h_iso),
     (re.compile(r"\b(?P<a>\d{1,2})[/-](?P<b>\d{1,2})[/-](?P<y>\d{4}|\d{2})\b"), _h_numeric),
-    (re.compile(rf"\b(?P<mo>{_MO})\.?\s+(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_month_day),
-    (re.compile(rf"\b(?P<d>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?(?P<mo>{_MO})\.?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_day_month),
+    (re.compile(rf"\b(?P<mo>{_MO})\.?\s*(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_month_day),
+    (re.compile(rf"\b(?P<d>\d{{1,2}})(?:st|nd|rd|th)?\s*(?:of\s+)?(?P<mo>{_MO})\.?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_day_month),
     (re.compile(r"\bin\s+(?P<n>\d{1,3})\s+(?P<unit>days?|weeks?|months?)\b", re.I), _h_in),
     (re.compile(r"\b(?P<n>\d{1,3})\s+(?P<unit>days?|weeks?|months?)\s+ago\b", re.I), _h_ago),
     (re.compile(r"\b(?:(?P<q>this|next|last)\s+)?(?P<wd>" + _WD + r")\b", re.I), _h_weekday),
