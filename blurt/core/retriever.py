@@ -14,9 +14,11 @@ entries for free.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 from ..config import Settings
 from ..db import Database
+from .dateref import query_ranges
 from .embedder import OllamaEmbedder
 
 
@@ -79,11 +81,20 @@ class Retriever:
         }
 
     async def query(self, q: str) -> dict:
-        """Hybrid search: exact lexical matches first, then semantic by score."""
+        """Hybrid search: exact + date matches first (high-confidence), then semantic."""
         cap = self._s.query_max_entries
 
         # 1. Lexical: exact substring matches are high-confidence and immediate.
         lexical = await asyncio.to_thread(self._db.lexical_search, q, cap)
+
+        # 1b. Date: if the query names a date ("tomorrow", "next week"), pull notes
+        # whose frozen date lands in that range. Like lexical, this is exact and
+        # embedding-independent, so it works the instant a note is saved and even
+        # when Ollama is down. Resolved against the local "today".
+        ranges = query_ranges(q, date.today())
+        date_hits = (
+            await asyncio.to_thread(self._db.entries_in_ranges, ranges, cap) if ranges else []
+        )
 
         # 2. Semantic: vector KNN collapsed to parent entries by best chunk. Best-effort:
         # if embeddings are unavailable (Ollama down), exact matches must still return, so a
@@ -104,12 +115,18 @@ class Retriever:
         rows = await asyncio.to_thread(self._db.get_entries_by_ids, [eid for eid, _ in ranked])
         rowmap = {r["id"]: r for r in rows}
 
-        # 3. Merge: lexical hits lead, semantic fills the rest, deduped, capped.
+        # 3. Merge: exact (lexical + date) hits lead at full confidence, semantic
+        # fills the rest, deduped, capped. Lexical leads date so a literal text
+        # match still wins its slot; date hits carry a flag the UI can lean on.
         seen: set[int] = set()
         entries: list[dict] = []
         for e in lexical:
             if e["id"] not in seen:
                 entries.append({**e, "score": 1.0})
+                seen.add(e["id"])
+        for e in date_hits:
+            if e["id"] not in seen:
+                entries.append({**e, "score": 1.0, "date_match": True})
                 seen.add(e["id"])
         for eid, sim in ranked:
             if eid in seen:

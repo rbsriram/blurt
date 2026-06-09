@@ -145,6 +145,34 @@ function relTime(iso) {
   return then.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toLowerCase();
 }
 
+// A date a note refers to, frozen at capture (server-side dateref). Parse the ISO
+// as a LOCAL day (not UTC) so "tomorrow" never slips a day, then label it the way
+// you'd say it: today / tomorrow / a weekday name / "jun 15".
+function fmtDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const when = new Date(y, m - 1, d), now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.round((when - today) / 86400000);
+  if (diff === 0) return "today";
+  if (diff === 1) return "tomorrow";
+  if (diff === -1) return "yesterday";
+  if (diff > 1 && diff < 7) return when.toLocaleDateString(undefined, { weekday: "short" }).toLowerCase();
+  const opts = { month: "short", day: "numeric" };
+  if (when.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+  return when.toLocaleDateString(undefined, opts).toLowerCase();
+}
+
+// A faint chip showing the soonest date a note names ("+N" if it names more).
+// Returns null when the note has no dates, so callers can append unconditionally.
+function dateChip(dates) {
+  if (!dates || !dates.length) return null;
+  const chip = document.createElement("span");
+  chip.className = "date-chip";
+  chip.textContent = fmtDate(dates[0]) + (dates.length > 1 ? ` +${dates.length - 1}` : "");
+  chip.title = dates.map(fmtDate).join(", ");
+  return chip;
+}
+
 // ---------------------------------------------------------------- search-term highlight (safe: text nodes only)
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function highlightTerms(root, query) {
@@ -255,7 +283,14 @@ function entryNode(e) {
   const time = document.createElement("div");
   time.className = "entry-time";
   time.textContent = relTime(e.created_at);
-  foot.append(action, time);
+  // Date chip rides next to the timestamp on the right; both sit in one group so
+  // the delete affordance keeps the far left.
+  const meta = document.createElement("div");
+  meta.className = "entry-meta";
+  const chip = dateChip(e.dates);
+  if (chip) meta.appendChild(chip);
+  meta.appendChild(time);
+  foot.append(action, meta);
 
   node.append(body, foot);
   state.entries.set(String(e.id), e);
@@ -772,6 +807,8 @@ function resultNode(e, query, i) {
   const time = document.createElement("div");
   time.className = "result-time";
   time.textContent = relTime(e.created_at);
+  const chip = dateChip(e.dates);
+  if (chip) { chip.classList.add("result-date"); time.appendChild(chip); }
   const body = document.createElement("div");
   body.className = "result-body";
   body.innerHTML = md(e.content);

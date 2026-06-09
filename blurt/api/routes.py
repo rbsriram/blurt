@@ -8,6 +8,7 @@ in single-digit milliseconds.
 from __future__ import annotations
 
 import re
+from datetime import date
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -15,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from ..config import set_notes_dir, settings
 from ..core import active_stream_markdown, render_stream_markdown
 from ..core.checklist import set_checkbox
+from ..core.dateref import anchor_dates
 from .schemas import (
     CheckboxToggle,
     EntryCreate,
@@ -78,10 +80,15 @@ async def status(request: Request):
 async def create_entry(body: EntryCreate, request: Request):
     if len(body.content) > settings.max_content_chars:
         raise HTTPException(status_code=413, detail="content too large")
-    entry = _db(request).add_entry(body.content)
+    db = _db(request)
+    entry = db.add_entry(body.content)
+    # Freeze any date references now, against today's local date, so "tomorrow"
+    # means the day it was written, not the day it's later read. Pure + fast, so
+    # it runs inline (no Ollama, unlike embedding) and is searchable immediately.
+    db.set_entry_dates(entry["id"], anchor_dates(body.content, date.today()))
     _indexer(request).enqueue(entry["id"])
     _touch_mirror(request)
-    return entry
+    return db.get_entry(entry["id"])
 
 
 @router.get("/entries")
@@ -120,9 +127,11 @@ async def edit_entry(entry_id: int, body: EntryUpdate, request: Request):
             raise HTTPException(status_code=404, detail="entry not found")
         raise HTTPException(status_code=409, detail="cannot edit a superseded entry")
     db.clear_chunks(entry_id)
+    # Re-freeze dates against today: the edited text may add or drop references.
+    db.set_entry_dates(entry_id, anchor_dates(body.content, date.today()))
     _indexer(request).enqueue(entry_id)
     _touch_mirror(request)
-    return updated
+    return db.get_entry(entry_id)
 
 
 @router.patch("/entries/{entry_id}/checkbox")

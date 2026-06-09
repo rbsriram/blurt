@@ -128,6 +128,24 @@ body {
 }
 .entry:hover .entry-time { opacity: 0.75; color: var(--accent); }
 
+/* A note's frozen date reference. Faint by default, brightens with the note on
+   hover, same as the timestamp it sits beside. */
+.entry-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.entry-meta .entry-time { margin-left: 0; }
+.date-chip {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--accent);
+  background: var(--selection);
+  border-radius: 4px;
+  padding: 0 5px;
+  opacity: 0.5;
+  white-space: nowrap;
+  transition: opacity var(--reveal);
+}
+.entry:hover .date-chip { opacity: 0.85; }
+.result-date { margin-left: 6px; opacity: 0.8; }
+
 .entry.focus-flash { animation: flash 1.2s ease; }
 @keyframes flash {
   0% { background: var(--selection); }
