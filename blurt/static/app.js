@@ -1175,8 +1175,6 @@ function settingsHtml(d) {
         <span class="path" id="set-path">${escapeHtml(d.scratchpad_path || "")}</span>
         ${changeBtn}
       </div>
-      <div class="note">Your notes are mirrored here as plain Markdown, always up to date.
-        Point it at any folder (e.g. inside an Obsidian or Dropbox folder) to keep them there.</div>
     </div>
     <div class="row">
       <div class="label">date format</div>
@@ -1186,8 +1184,6 @@ function settingsHtml(d) {
           <button data-order="MDY" class="${d.date_order === "MDY" ? "on" : ""}">month / day / year</button>
         </div>
       </div>
-      <div class="note">How Blurt reads ambiguous numeric dates like 6/4. Spelled-out
-        months (6 Jun) are never ambiguous and always work.</div>
     </div>
     <div class="row">
       <div class="label">smart search engine</div>
