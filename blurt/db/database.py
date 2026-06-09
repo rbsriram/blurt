@@ -345,6 +345,15 @@ class Database:
             ).fetchone()
         return row["blob"] if row else None
 
+    def update_secret_blob(self, entry_id: int, blob: str) -> bool:
+        """Replace the encrypted value of an existing secret. False if it isn't one."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE secrets SET blob = ? WHERE entry_id = ?", (blob, entry_id)
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def set_entry_dates(self, entry_id: int, dates: list[str]) -> None:
         """Replace the frozen date references for an entry (idempotent on re-save)."""
         with self._lock:

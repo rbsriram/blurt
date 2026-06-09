@@ -281,6 +281,9 @@ function entryNode(e) {
     const div = document.createElement("span");
     div.className = "sec-div";
     body.append(lbl, div, secretControl(e));
+    // Click the label/row to edit in place (the value's copy/show controls stop
+    // propagation, so clicking those acts on the value, not the editor).
+    body.addEventListener("click", () => openSecretEditor(node, e));
   } else {
     body.innerHTML = md(e.content);
     // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
@@ -402,43 +405,62 @@ function secretControl(e) {
 
 // The "store a secret" form: a label (visible, searchable) + the value (encrypted).
 // Keyboard only: enter saves, esc cancels, enter on the label jumps to the value.
-function openSecretForm() {
-  if (!el.secretForm.hidden) return closeSecretForm();
-  // data-*-ignore + autocomplete keep browser/password-manager autofill icons out of
-  // these fields (this is our own local vault, not a login form).
+// Build the one-line "key │ secret  show" editing row into `container`, pre-filled
+// from opts.key/opts.val. Shared by the bottom create form and the inline editor.
+// enter on the key jumps to the value; enter on the value calls onSubmit(key, val);
+// esc calls onCancel. Returns the two input elements so the caller can focus one.
+//
+// Not type=password on purpose: a real password field makes macOS iCloud Passwords
+// pop its autofill UI (which Apple won't suppress via attributes). We mask a plain
+// text field with CSS (-webkit-text-security) instead; "show" toggles that.
+function wireSecretFields(container, { key = "", val = "", onSubmit, onCancel }) {
+  // data-*-ignore + autocomplete keep password managers from injecting autofill icons.
   const NOFILL = 'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" '
     + 'data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other"';
-  // Not type=password on purpose: a real password field makes macOS iCloud Passwords
-  // (and others) pop their autofill UI, which Apple won't suppress via attributes. We
-  // use a plain text field masked with CSS (-webkit-text-security), so it reads as
-  // hidden but never triggers password autofill. "show" toggles the masking.
-  el.secretForm.innerHTML = `
-    <input id="sec-label" placeholder="key" ${NOFILL} />
+  container.innerHTML = `
+    <input class="sec-key" placeholder="key" ${NOFILL} />
     <span class="sec-div"></span>
-    <input id="sec-value" placeholder="secret" ${NOFILL} />
-    <span id="sec-show" class="secret-toggle" hidden>show</span>`;
-  el.secretForm.hidden = false;
-  const label = document.getElementById("sec-label");
-  const value = document.getElementById("sec-value");
-  const show = document.getElementById("sec-show");
-  // The show/hide toggle only appears once there's something to reveal.
-  value.addEventListener("input", () => { show.hidden = !value.value; });
+    <input class="sec-val" placeholder="secret" ${NOFILL} />
+    <span class="sec-show secret-toggle" hidden>show</span>`;
+  const keyEl = container.querySelector(".sec-key");
+  const valEl = container.querySelector(".sec-val");
+  const show = container.querySelector(".sec-show");
+  keyEl.value = key;
+  valEl.value = val;
+  show.hidden = !valEl.value;
+  valEl.addEventListener("input", () => { show.hidden = !valEl.value; });
   show.addEventListener("click", () => {
-    const revealed = value.classList.toggle("revealed");   // toggles the CSS masking
+    const revealed = valEl.classList.toggle("revealed");
     show.textContent = revealed ? "hide" : "show";
-    value.focus();
+    valEl.focus();
   });
   const onKey = (ev) => {
-    if (ev.key === "Escape") { ev.preventDefault(); closeSecretForm(); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); onCancel(); return; }
     if (ev.key !== "Enter") return;
     ev.preventDefault();
-    if (ev.target === label && label.value.trim()) { value.focus(); return; }  // label -> value
-    saveSecret();
+    if (ev.target === keyEl && keyEl.value.trim()) { valEl.focus(); return; }  // key -> value
+    onSubmit(keyEl.value.trim(), valEl.value);
   };
-  label.addEventListener("keydown", onKey);
-  value.addEventListener("keydown", onKey);
-  el.composeRow.hidden = true;   // the form replaces the text box while open
-  label.focus();
+  keyEl.addEventListener("keydown", onKey);
+  valEl.addEventListener("keydown", onKey);
+  return { keyEl, valEl };
+}
+
+// Create a new secret: the bottom form replaces the compose box while open.
+function openSecretForm() {
+  if (!el.secretForm.hidden) return closeSecretForm();
+  el.secretForm.hidden = false;
+  el.composeRow.hidden = true;
+  const { keyEl } = wireSecretFields(el.secretForm, {
+    onCancel: closeSecretForm,
+    onSubmit: async (label, value) => {
+      if (!label || !value) { flashHint("need both a key and a secret"); return; }
+      const res = await api.post("/api/secrets", { label, value });
+      if (res.ok && res.data) { prependEntry(res.data); closeSecretForm(); flashHint("secret saved, encrypted"); }
+      else { flashHint(res.status === 503 ? "no keychain available for secrets" : "couldn't save secret"); }
+    },
+  });
+  keyEl.focus();
 }
 
 function closeSecretForm() {
@@ -448,18 +470,31 @@ function closeSecretForm() {
   focusComposeEnd();
 }
 
-async function saveSecret() {
-  const label = (document.getElementById("sec-label").value || "").trim();
-  const value = document.getElementById("sec-value").value || "";
-  if (!label || !value) { flashHint("need both a label and a secret"); return; }
-  const res = await api.post("/api/secrets", { label, value });
-  if (res.ok && res.data) {
-    prependEntry(res.data);
-    closeSecretForm();
-    flashHint("secret saved, encrypted");
-  } else {
-    flashHint(res.status === 503 ? "no keychain available for secrets" : "couldn't save secret");
-  }
+// Edit a secret in place: the note row becomes the same key │ value editor, pre-filled
+// with the decrypted value. Enter saves (re-encrypts); emptying the key or value and
+// pressing Enter deletes the whole secret (recoverable); Esc reverts.
+async function openSecretEditor(node, e) {
+  const body = node.querySelector(".entry-body");
+  if (!body || body.classList.contains("editing-secret")) return;
+  const cur = await fetchSecret(e.id);
+  if (cur == null) { flashHint("couldn't unlock that secret"); return; }
+  if (state.cancelEdit) state.cancelEdit();
+  el.stream.classList.add("editing");
+  body.className = "entry-body secret-fields editing-secret";
+  const stop = () => { state.cancelEdit = null; el.stream.classList.remove("editing"); };
+  state.cancelEdit = () => { stop(); node.replaceWith(entryNode(e)); focusComposeEnd(); };
+  const { valEl } = wireSecretFields(body, {
+    key: e.content,
+    val: cur,
+    onCancel: () => state.cancelEdit && state.cancelEdit(),
+    onSubmit: async (label, value) => {
+      if (!label || !value) { stop(); retireEntry(e.id); focusComposeEnd(); return; }  // emptied -> delete
+      const res = await api.patch(`/api/secrets/${e.id}`, { label, value });
+      if (res.ok && res.data) { stop(); node.replaceWith(entryNode(res.data)); focusComposeEnd(); }
+      else { flashHint("couldn't save secret"); }
+    },
+  });
+  valEl.focus();
 }
 
 async function loadStream(reset = true) {

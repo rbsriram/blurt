@@ -334,12 +334,12 @@ body {
 #inputhint .undo-link { color: var(--accent); cursor: pointer; }
 #inputhint .undo-link:hover { text-decoration: underline; }
 
-/* the add-secret form: flat plain-text inputs in the pad's own style. It sits
-   in-flow and REPLACES the compose box while open (app.js hides #compose-row), so
-   it reads as the input, not a floating panel. No box, no rounded borders, no accent. */
-#secret-form { display: flex; align-items: stretch; gap: 12px; padding: 4px 0; }
+/* the key │ secret editing row, used by both the bottom create form and the inline
+   note editor. Flat plain-text inputs in the pad's own style: no box, no rounded
+   borders, no accent. The bottom form REPLACES the compose box while open. */
+.secret-fields { display: flex; align-items: stretch; gap: 12px; padding: 4px 0; }
 #secret-form[hidden] { display: none; }
-#secret-form input {
+.secret-fields input {
   -webkit-appearance: none;   /* kill WKWebView's native field border/underline */
   appearance: none;
   border: none;
@@ -351,15 +351,15 @@ body {
   padding: 0;
   outline: none;
 }
-#secret-form input::placeholder { color: var(--muted); }
+.secret-fields input::placeholder { color: var(--muted); }
 /* one line: key │ secret(dots)  show, with a subtle vertical divider */
-#sec-label { flex: 0 0 7em; min-width: 0; }
-#sec-value { flex: 0 1 26em; min-width: 0; align-self: center; }
+.sec-key { flex: 0 0 7em; min-width: 0; }
+.sec-val { flex: 0 1 26em; min-width: 0; align-self: center; }
 /* a thin, subtle vertical rule between two fields/segments on one line */
 .sec-div { flex: none; width: 1px; align-self: stretch; background: var(--fg); opacity: 0.16; }
 /* Mask the value via CSS (not a password field) so macOS/iCloud autofill stays away. */
-#sec-value { -webkit-text-security: disc; text-security: disc; }
-#sec-value.revealed { -webkit-text-security: none; text-security: none; }
+.sec-val { -webkit-text-security: disc; text-security: disc; }
+.sec-val.revealed { -webkit-text-security: none; text-security: none; }
 
 /* a saved secret note, one line: label │ masked value | show, divider between */
 .secret-note { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; }

@@ -208,6 +208,27 @@ async def create_secret(body: SecretCreate, request: Request):
     return entry
 
 
+@router.patch("/secrets/{entry_id}")
+async def update_secret(entry_id: int, body: SecretCreate, request: Request):
+    """Edit a secret in place: new label (re-indexed) and re-encrypted value."""
+    vault = request.app.state.vault
+    if vault is None:
+        raise HTTPException(status_code=503, detail="secret storage unavailable")
+    if len(body.value) > settings.max_content_chars:
+        raise HTTPException(status_code=413, detail="secret too large")
+    db = _db(request)
+    if db.secret_blob(entry_id) is None:
+        raise HTTPException(status_code=404, detail="not a secret")
+    updated = db.set_content_in_place(entry_id, body.label)
+    if updated is None:
+        raise HTTPException(status_code=409, detail="cannot edit a superseded entry")
+    db.update_secret_blob(entry_id, vault.encrypt(body.value))
+    db.clear_chunks(entry_id)  # the label changed; re-embed it for search
+    _indexer(request).enqueue(entry_id)
+    _touch_mirror(request)
+    return db.get_entry(entry_id)
+
+
 @router.post("/secrets/{entry_id}/reveal")
 async def reveal_secret(entry_id: int, request: Request):
     """Decrypt and return a secret's value. POST (not GET) so it isn't cached or logged
