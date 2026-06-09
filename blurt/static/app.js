@@ -250,6 +250,8 @@ const state = {
   slash: { open: false, items: [], focus: 0, lineStart: 0 },
 };
 
+let secretsAvailable = false;   // set from /api/status; gates the lock button and /secret
+
 const DRAFT_KEY = "blurt-draft";
 const THEME_KEY = "blurt-theme";
 const GHOST_DEBOUNCE = 120;       // UX.md §8: peek ~120ms
@@ -353,40 +355,38 @@ async function fetchSecret(id) {
   return res.ok && res.data ? res.data.value : null;
 }
 
-// The masked control under a secret note: dots + reveal (auto re-masks after 15s) +
-// copy (clipboard auto-clears after 20s, best-effort). Buttons stop propagation so
-// they never trigger the note's own click handling.
+// The masked control under a secret note. Click the value to COPY it (the common
+// action; clipboard auto-clears after 20s, best-effort). The small "show" toggles
+// reveal/hide (auto re-masks after 15s). Both stop propagation.
 function secretControl(e) {
   const wrap = document.createElement("div");
   wrap.className = "secret";
   const mask = document.createElement("code");
   mask.className = "secret-mask";
   mask.textContent = "••••••••";
-  const reveal = document.createElement("button");
-  reveal.className = "secret-btn";
-  reveal.textContent = "reveal";
-  const copy = document.createElement("button");
-  copy.className = "secret-btn";
-  copy.textContent = "copy";
-  wrap.append(mask, reveal, copy);
+  mask.title = "click to copy";
+  const toggle = document.createElement("span");
+  toggle.className = "secret-toggle";
+  toggle.textContent = "show";
+  wrap.append(mask, toggle);
 
   let shown = false, hideTimer = null;
-  const hide = () => { mask.textContent = "••••••••"; reveal.textContent = "reveal"; shown = false; clearTimeout(hideTimer); };
-  reveal.addEventListener("click", async (ev) => {
+  const hide = () => { if (shown) mask.textContent = "••••••••"; toggle.textContent = "show"; shown = false; clearTimeout(hideTimer); };
+  toggle.addEventListener("click", async (ev) => {
     ev.stopPropagation();
     if (shown) return hide();
     const v = await fetchSecret(e.id);
     if (v == null) { flashHint("couldn't unlock that secret"); return; }
-    mask.textContent = v; reveal.textContent = "hide"; shown = true;
+    mask.textContent = v; toggle.textContent = "hide"; shown = true;
     hideTimer = setTimeout(hide, 15000);
   });
-  copy.addEventListener("click", async (ev) => {
+  mask.addEventListener("click", async (ev) => {
     ev.stopPropagation();
     const v = await fetchSecret(e.id);
     if (v == null) { flashHint("couldn't unlock that secret"); return; }
     try {
       await navigator.clipboard.writeText(v);
-      flashHint("secret copied — clears in 20s");
+      flashHint("copied · clipboard clears in 20s");
       // Best-effort auto-clear: only wipe if the clipboard still holds our value.
       setTimeout(async () => {
         try { if ((await navigator.clipboard.readText()) === v) await navigator.clipboard.writeText(""); } catch { /* not focused / denied */ }
@@ -537,7 +537,7 @@ function updateSlashMenu() {
   const q = m[1].toLowerCase();
   let items = q ? SLASH_ITEMS.filter((it) => it.keys.split(" ").some((k) => k.startsWith(q)))
                 : SLASH_ITEMS.slice();
-  if (el.addSecret.hidden) items = items.filter((it) => it.action !== "secret");  // no keychain
+  if (!secretsAvailable) items = items.filter((it) => it.action !== "secret");  // no keychain
   if (!items.length) { closeSlash(); return; }
   state.slash = { open: true, items, focus: 0, lineStart };
   renderSlash();
@@ -1287,8 +1287,9 @@ function renderEngineStatus(status) {
   lastStatus = status;
   const node = document.getElementById("set-engine");
   if (node) node.innerHTML = engineStatusHtml(status);
-  // Show the "store a secret" affordance only when there's a keychain to hold the key.
-  if (el.addSecret) el.addSecret.hidden = !status.secrets_available;
+  // Show the "store a secret" affordances only when there's a keychain to hold the key.
+  secretsAvailable = !!status.secrets_available;
+  if (el.addSecret) el.addSecret.hidden = !secretsAvailable;
 }
 
 async function initErase() {
@@ -1410,7 +1411,7 @@ window.addEventListener("keydown", (ev) => {
   // Cmd/Ctrl+K: store a secret. Keyboard-first; the lock button is the click path.
   // Only when secrets are available (the button is shown) and nothing modal is open.
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "k" || ev.key === "K")) {
-    if (!el.addSecret.hidden && el.searchOverlay.hidden && el.settings.hidden) {
+    if (secretsAvailable && el.searchOverlay.hidden && el.settings.hidden) {
       ev.preventDefault(); openSecretForm(); return;
     }
   }
