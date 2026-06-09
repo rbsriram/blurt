@@ -337,22 +337,22 @@ body {
 /* the add-secret form: flat plain-text inputs in the pad's own style. It sits
    in-flow and REPLACES the compose box while open (app.js hides #compose-row), so
    it reads as the input, not a floating panel. No box, no rounded borders, no accent. */
+#secret-form { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; }
 #secret-form[hidden] { display: none; }
 #secret-form input {
-  width: 100%;
   border: none;
   background: transparent;
   color: var(--fg);
   font: inherit;
   font-size: 15px;
   line-height: 1.6;
-  padding: 4px 0;
+  padding: 0;
   outline: none;
 }
 #secret-form input::placeholder { color: var(--muted); }
-/* value row: the password field + a show/hide toggle kept right next to the text */
-#sec-value-row { display: flex; align-items: baseline; gap: 10px; border-top: 1px solid var(--faint); }
-#sec-value-row #sec-value { flex: 0 1 26em; width: auto; min-width: 0; }
+/* one line: key | secret(dots)  show */
+#sec-label { flex: 0 0 7em; min-width: 0; border-right: 1px solid var(--faint); padding-right: 12px; }
+#sec-value { flex: 0 1 26em; min-width: 0; }
 /* Mask the value via CSS (not a password field) so macOS/iCloud autofill stays away. */
 #sec-value { -webkit-text-security: disc; text-security: disc; }
 #sec-value.revealed { -webkit-text-security: none; text-security: none; }

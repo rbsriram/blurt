@@ -410,10 +410,8 @@ function openSecretForm() {
   // hidden but never triggers password autofill. "show" toggles the masking.
   el.secretForm.innerHTML = `
     <input id="sec-label" placeholder="key" ${NOFILL} />
-    <div id="sec-value-row">
-      <input id="sec-value" placeholder="secret" ${NOFILL} />
-      <span id="sec-show" class="secret-toggle" hidden>show</span>
-    </div>`;
+    <input id="sec-value" placeholder="secret" ${NOFILL} />
+    <span id="sec-show" class="secret-toggle" hidden>show</span>`;
   el.secretForm.hidden = false;
   const label = document.getElementById("sec-label");
   const value = document.getElementById("sec-value");
@@ -702,13 +700,15 @@ function openEditor(node, e, hooks = {}) {
     if (ev.key === "Enter") {
       ev.preventDefault();
       // Emptied an existing note, then confirmed: delete it (recoverable via the
-      // undo stub / ⌘Z). Matches outliner/notes-app muscle memory.
-      if (!ta.value.trim()) { stopEditing(); retireEntry(e.id); return; }
+      // undo stub / ⌘Z). Matches outliner/notes-app muscle memory. Focus returns to
+      // the input box so the keyboard flow never strands you.
+      if (!ta.value.trim()) { stopEditing(); retireEntry(e.id); focusComposeEnd(); return; }
       const res = await api.patch(`/api/entries/${e.id}`, { content: ta.value });
       if (res.ok) {
         stopEditing();
         applyEdit(node, e, res.data);
         hooks.onSaved?.();
+        focusComposeEnd();
       }
     } else if (ev.key === "Escape") {
       ev.preventDefault();
@@ -825,13 +825,14 @@ async function editPeekFocused() {
   if (!node) return;                          // gone (raced with a delete) — bail quietly
   const e = state.entries.get(String(m.id)) || m;
   node.scrollIntoView({ block: "center" });
-  openEditor(node, e, {                       // openEditor clears the peek; ↑ re-summons it after
-    onSaved: () => {                          // trigger text has done its job: clean slate
-      el.compose.value = "";
-      localStorage.removeItem(DRAFT_KEY);
-      autoGrow();
-    },
-  });
+  if (e.is_secret) { clearPeek(); flash(node); return; }  // secrets aren't inline-editable; just locate
+  // Stepping into an existing note from the peek: the draft was only the search
+  // trigger, so clear it now (no leftover duplicate in the input box) and return
+  // focus there afterward via the editor's own save/cancel/delete paths.
+  el.compose.value = "";
+  localStorage.removeItem(DRAFT_KEY);
+  autoGrow();
+  openEditor(node, e);
 }
 
 async function supersedePeekFocused() {
