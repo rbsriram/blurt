@@ -128,27 +128,21 @@ body {
 }
 .entry:hover .entry-time { opacity: 0.75; color: var(--accent); }
 
-/* A note's referenced date: a calendar-tagged pill on the LEFT of the footer,
-   kept clear of the saved-time on the right so they don't read as two dates. */
+/* A note's referenced date: a barely-there muted label on the LEFT of the
+   footer, kept clear of the saved-time on the right. Same colour family as the
+   timestamp, fainter, no pill, so it never competes with the note. Brightens on
+   hover to reveal it's clickable. */
 .date-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
   font-size: 10px;
-  line-height: 1.4;
-  color: var(--accent);
-  background: var(--selection);
-  border-radius: 4px;
-  padding: 0 5px;
-  opacity: 0.6;
+  color: var(--muted);
+  opacity: 0.4;
   white-space: nowrap;
   cursor: pointer;
   transition: opacity var(--reveal);
 }
-.date-chip .chip-ico { flex: none; }
-.entry:hover .date-chip { opacity: 0.9; }
-.date-chip:hover { opacity: 1; text-decoration: underline; }
-.result-date { margin-left: 8px; opacity: 0.85; }
+.entry:hover .date-chip { opacity: 0.6; }
+.date-chip:hover { opacity: 0.95; text-decoration: underline; }
+.result-date { margin-left: 8px; }
 
 .entry.focus-flash { animation: flash 1.2s ease; }
 @keyframes flash {
