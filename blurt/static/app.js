@@ -145,6 +145,46 @@ function relTime(iso) {
   return then.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toLowerCase();
 }
 
+// A date a note refers to, frozen at capture (server-side dateref). Parse the ISO
+// as a LOCAL day (not UTC) so "tomorrow" never slips a day, then label it the way
+// you'd say it: today / tomorrow / a weekday name / "jun 15".
+function fmtDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const when = new Date(y, m - 1, d), now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.round((when - today) / 86400000);
+  if (diff === 0) return "today";
+  if (diff === 1) return "tomorrow";
+  if (diff === -1) return "yesterday";
+  if (diff > 1 && diff < 7) return when.toLocaleDateString(undefined, { weekday: "short" }).toLowerCase();
+  const opts = { month: "short", day: "numeric" };
+  if (when.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+  return when.toLocaleDateString(undefined, opts).toLowerCase();
+}
+
+// A faint label showing the soonest date a note names ("+N" if it names more).
+// Kept barely-there (muted, no pill) so it doesn't compete with the note; it
+// brightens on hover to signal it's clickable, and clicking finds that day.
+// Returns null when the note has no dates, so callers can append unconditionally.
+function dateChip(dates) {
+  if (!dates || !dates.length) return null;
+  const chip = document.createElement("span");
+  chip.className = "date-chip";
+  chip.textContent = fmtDate(dates[0]) + (dates.length > 1 ? ` +${dates.length - 1}` : "");
+  chip.title = dates.map(fmtDate).join(", ") + " · click to find this day";
+  chip.addEventListener("click", (ev) => { ev.stopPropagation(); searchByDate(dates[0]); });
+  return chip;
+}
+
+// Run search for an exact day. The query is the ISO date itself, which the date
+// parser reads as that single day, so this hits notes frozen to it regardless of
+// the format they were written in. Searching the soonest date when a note has more.
+function searchByDate(iso) {
+  openSearch();
+  el.searchInput.value = iso;
+  runSearch();
+}
+
 // ---------------------------------------------------------------- search-term highlight (safe: text nodes only)
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function highlightTerms(root, query) {
@@ -255,7 +295,13 @@ function entryNode(e) {
   const time = document.createElement("div");
   time.className = "entry-time";
   time.textContent = relTime(e.created_at);
-  foot.append(action, time);
+  // The note's referenced date is a tagged pill on the LEFT (it's about the
+  // content); the faint saved-time stays at the far right (it's metadata). Kept
+  // apart so the two never read as a confusing pair of dates.
+  const chip = dateChip(e.dates);
+  foot.append(action);
+  if (chip) foot.append(chip);
+  foot.append(time);
 
   node.append(body, foot);
   state.entries.set(String(e.id), e);
@@ -772,6 +818,8 @@ function resultNode(e, query, i) {
   const time = document.createElement("div");
   time.className = "result-time";
   time.textContent = relTime(e.created_at);
+  const chip = dateChip(e.dates);
+  if (chip) { chip.classList.add("result-date"); time.appendChild(chip); }
   const body = document.createElement("div");
   body.className = "result-body";
   body.innerHTML = md(e.content);
@@ -928,6 +976,17 @@ function settingsHtml(d) {
         Point it at any folder (e.g. inside an Obsidian or Dropbox folder) to keep them there.</div>
     </div>
     <div class="row">
+      <div class="label">date format</div>
+      <div class="value">
+        <div class="seg" id="set-dateorder">
+          <button data-order="DMY" class="${d.date_order === "MDY" ? "" : "on"}">day / month / year</button>
+          <button data-order="MDY" class="${d.date_order === "MDY" ? "on" : ""}">month / day / year</button>
+        </div>
+      </div>
+      <div class="note">How Blurt reads ambiguous numeric dates like 6/4. Spelled-out
+        months (6 Jun) are never ambiguous and always work.</div>
+    </div>
+    <div class="row">
       <div class="label">smart search engine</div>
       <div class="note" id="set-engine">${engineStatusHtml(lastStatus)}</div>
     </div>
@@ -947,13 +1006,32 @@ function settingsHtml(d) {
 }
 
 async function openSettings() {
-  let d = { scratchpad_path: "", version: "" };
+  let d = { scratchpad_path: "", version: "", date_order: "DMY" };
   try { d = await api.get("/api/settings"); } catch { /* show blanks */ }
   el.settings.innerHTML = settingsHtml(d);
   el.settings.hidden = false;
   document.getElementById("set-change").onclick = changeNotesFolder;
   document.getElementById("set-update").onclick = checkUpdates;
+  el.settings.querySelectorAll("#set-dateorder button").forEach((b) => {
+    b.onclick = () => setDateOrder(b.dataset.order);
+  });
   setTimeout(() => document.addEventListener("mousedown", onSettingsOutside), 0);
+}
+
+// Flip how ambiguous numeric dates read. The server re-freezes existing notes, so
+// the change shows everywhere at once; reload the stream to reflect new chips.
+async function setDateOrder(order) {
+  const group = document.getElementById("set-dateorder");
+  const current = group.querySelector("button.on");
+  if (current && current.dataset.order === order) return;   // no-op if already active
+  const res = await api.post("/api/date-format", { order });
+  if (res.ok) {
+    group.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.order === order));
+    flashHint("date format updated");
+    loadStream(true);
+  } else {
+    flashHint("couldn't change the date format");
+  }
 }
 function onSettingsOutside(ev) { if (!el.settings.contains(ev.target)) closeSettings(); }
 function closeSettings() {

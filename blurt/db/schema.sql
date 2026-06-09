@@ -29,9 +29,19 @@ CREATE TABLE IF NOT EXISTS chunks (
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- Date references found in an entry's text, frozen to absolute calendar days at
+-- capture/edit time (see core/dateref.py). One entry can mention several dates.
+-- This is what makes "show me next week" searchable; it carries no obligations.
+CREATE TABLE IF NOT EXISTS entry_dates (
+    entry_id  INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    date      TEXT    NOT NULL,                        -- ISO 'YYYY-MM-DD'
+    PRIMARY KEY (entry_id, date)
+);
+
 CREATE INDEX IF NOT EXISTS idx_entries_created    ON entries(created_at);
 CREATE INDEX IF NOT EXISTS idx_entries_active     ON entries(is_superseded);
 CREATE INDEX IF NOT EXISTS idx_chunks_entry       ON chunks(entry_id);
+CREATE INDEX IF NOT EXISTS idx_entry_dates_date   ON entry_dates(date);
 
 -- Lightweight key/value for schema versioning and bookkeeping.
 CREATE TABLE IF NOT EXISTS meta (

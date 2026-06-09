@@ -118,6 +118,14 @@ class Settings:
         return self.notes_dir / "scratchpad.md"
 
     @property
+    def date_order(self) -> str:
+        """How to read ambiguous all-numeric dates like 6/4: "DMY" (day-first, the
+        default and the international norm) or "MDY" (month-first, US style). Set in
+        Settings; only affects dates whose digits don't already disambiguate."""
+        chosen = _read_settings(self.db_path).get("date_order")
+        return chosen if chosen in ("DMY", "MDY") else "DMY"
+
+    @property
     def static_dir(self) -> Path:
         return _ROOT / "static"
 
@@ -156,6 +164,17 @@ def _read_notes_dir(db_path: str) -> Path | None:
         if p.is_dir():
             return p
     return None
+
+
+def set_date_order(db_path: str, order: str) -> str:
+    """Persist the date-format preference. Raises on an unknown value so the caller
+    can return a clear error."""
+    if order not in ("DMY", "MDY"):
+        raise ValueError("date order must be 'DMY' or 'MDY'")
+    data = _read_settings(db_path)
+    data["date_order"] = order
+    _settings_file(db_path).write_text(json.dumps(data))
+    return order
 
 
 def set_notes_dir(db_path: str, folder: str | Path) -> Path:

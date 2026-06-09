@@ -7,6 +7,7 @@ regressions are caught without external services.
 
 import asyncio
 import os
+from datetime import date
 
 import pytest
 
@@ -14,6 +15,7 @@ from blurt.api.schemas import CheckboxToggle, EntryCreate, QueryRequest
 from blurt.config import Settings
 from blurt.core.checklist import set_checkbox
 from blurt.core.chunker import chunk_text
+from blurt.core.dateref import anchor_dates, query_is_date_only, query_ranges
 from blurt.core.exporter import render_stream_markdown
 from blurt.core.indexer import Indexer
 from blurt.core.retriever import Retriever
@@ -187,6 +189,155 @@ def test_reset_wipes(db):
     db.reset()
     assert db.count_active_entries() == 0
     assert db.list_entries() == []
+
+
+# ---- date references (dateref) ----------------------------------------
+
+# Wednesday, anchor for every relative case below.
+TODAY = date(2026, 6, 10)
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("meeting with David tomorrow", ["2026-06-11"]),
+    ("call mom today", ["2026-06-10"]),
+    ("that was yesterday", ["2026-06-09"]),
+    ("ship it day after tomorrow", ["2026-06-12"]),     # not 06-11 from "tomorrow"
+    ("dentist next friday", ["2026-06-19"]),            # Fri after this week's Fri
+    ("standup this monday", ["2026-06-08"]),            # Monday of the current week
+    ("flight on 2026-07-01", ["2026-07-01"]),
+    ("invoice due Jun 15", ["2026-06-15"]),
+    ("party 4 july", ["2026-07-04"]),
+    ("see you on the 14th of June", ["2026-06-14"]),    # "of" between day and month
+    ("on the 14th of this month i fly", ["2026-06-14"]),  # not "jun 1" from "this month"
+    ("dated 14/2/2024", ["2024-02-14"]),                # day-first slash date with year
+    ("dated 14-12-2026", ["2026-12-14"]),               # day-first dash date with year
+    ("review in 3 days", ["2026-06-13"]),
+    ("started 2 weeks ago", ["2026-05-27"]),
+])
+def test_anchor_dates_resolves(text, expected):
+    assert anchor_dates(text, TODAY) == expected
+
+
+@pytest.mark.parametrize("text", [
+    "do taxes this month",          # a whole month is not a single day: no chip...
+    "lunch next week",              # ...nor is a whole week.
+])
+def test_vague_spans_do_not_anchor_a_note(text):
+    assert anchor_dates(text, TODAY) == []
+
+
+def test_numeric_date_disambiguates_when_it_can():
+    # 14 can't be a month, so it's the day regardless of the chosen order.
+    assert anchor_dates("14-12-2026", TODAY) == ["2026-12-14"]
+    assert anchor_dates("14-12-2026", TODAY, "MDY") == ["2026-12-14"]
+    assert anchor_dates("12-12-26", TODAY) == ["2026-12-12"]      # 2-digit year
+
+
+def test_ambiguous_numeric_date_follows_chosen_order():
+    # 6/4: only the format preference can decide. Day-first vs month-first.
+    assert anchor_dates("6/4/2026", TODAY, "DMY") == ["2026-04-06"]
+    assert anchor_dates("6/4/2026", TODAY, "MDY") == ["2026-06-04"]
+
+
+@pytest.mark.parametrize("text", [
+    "june 1", "jun 1", "june1", "jun1", "1 june", "1june", "1st jun", "1st june", "jun 1st",
+])
+def test_month_name_day_formats_all_resolve(text):
+    # Spaced, glued, abbreviated, ordinal: all read as June 1 of the current year.
+    assert anchor_dates(text, TODAY) == ["2026-06-01"]
+
+
+def test_month_day_without_year_is_current_year_not_next():
+    # June 1 is before TODAY (Jun 10); it should stay this year, findable by search,
+    # not jump to next year.
+    assert anchor_dates("jun 1", TODAY) == ["2026-06-01"]
+    assert query_ranges("jun 1", TODAY) == [("2026-06-01", "2026-06-01")]
+
+
+@pytest.mark.parametrize("text", ["tomorrow", "2nd feb", "on 14/2/2024", "next week", "due jun 1"])
+def test_pure_date_queries_are_recognized(text):
+    assert query_is_date_only(text, TODAY) is True
+
+
+@pytest.mark.parametrize("text", ["meeting tomorrow", "sarah birthday", "dog", "pay rent next week now"])
+def test_queries_with_a_topic_are_not_date_only(text):
+    assert query_is_date_only(text, TODAY) is False
+
+
+def test_pure_date_search_drops_semantic_noise(db):
+    # "tomorrow" must not surface a note dated today via fuzzy meaning. With a dead
+    # embedder, semantic is off anyway; the point is date+lexical still return and the
+    # today-note (no text/date match) does not.
+    tom = db.add_entry("dentist appt")
+    db.set_entry_dates(tom["id"], ["2026-06-11"])           # tomorrow, relative to TODAY
+    today = db.add_entry("vish bday")
+    db.set_entry_dates(today["id"], ["2026-06-10"])         # today: must NOT match "tomorrow"
+    res = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).query("11/6/2026"))
+    ids = [e["id"] for e in res["entries"]]
+    assert tom["id"] in ids and today["id"] not in ids
+
+
+@pytest.mark.parametrize("text", [
+    "meeting David at five",        # bare number is not a date (precision over recall)
+    "we may go there",              # bare month word without a day number
+    "see you at 9pm",               # time of day is left to the verbatim text
+    "buy 6 eggs",
+    "ref 1/6 attached",             # slash with no year: a ref, not a date
+    "use 3/4 cup of flour",         # fraction, not a date
+])
+def test_anchor_dates_ignores_ambiguous(text):
+    assert anchor_dates(text, TODAY) == []
+
+
+def test_anchor_dates_dedupes_and_sorts():
+    assert anchor_dates("today and again today, then tomorrow", TODAY) == ["2026-06-10", "2026-06-11"]
+
+
+def test_query_ranges_expands_week_to_span():
+    assert query_ranges("next week", TODAY) == [("2026-06-15", "2026-06-21")]
+
+
+def test_query_ranges_point_is_single_day():
+    assert query_ranges("tomorrow", TODAY) == [("2026-06-11", "2026-06-11")]
+
+
+# ---- date storage + search -------------------------------------------
+
+def test_entry_dates_frozen_on_save_and_searchable(db):
+    e = db.add_entry("meeting David tomorrow")
+    db.set_entry_dates(e["id"], anchor_dates("meeting David tomorrow", TODAY))
+    assert db.get_entry(e["id"])["dates"] == ["2026-06-11"]
+    # The "next week" range (Mon 15..Sun 21) must NOT include tomorrow (Thu 11).
+    assert db.entries_in_ranges([("2026-06-15", "2026-06-21")], 10) == []
+    # A range covering tomorrow finds it.
+    hits = db.entries_in_ranges([("2026-06-11", "2026-06-11")], 10)
+    assert [h["id"] for h in hits] == [e["id"]]
+
+
+def test_date_search_excludes_superseded(db):
+    e = db.add_entry("dentist tomorrow")
+    db.set_entry_dates(e["id"], ["2026-06-11"])
+    db.supersede_entry(e["id"])
+    assert db.entries_in_ranges([("2026-06-11", "2026-06-11")], 10) == []
+
+
+def test_set_entry_dates_replaces(db):
+    e = db.add_entry("note")
+    db.set_entry_dates(e["id"], ["2026-06-11", "2026-06-12"])
+    db.set_entry_dates(e["id"], ["2026-06-20"])          # re-save drops the old set
+    assert db.get_entry(e["id"])["dates"] == ["2026-06-20"]
+
+
+def test_backfill_anchors_to_each_notes_creation_date(db):
+    # A pre-existing note's "tomorrow" must resolve against when it was WRITTEN,
+    # not against today, and the pass must be one-shot (idempotent).
+    e = db.add_entry("call David tomorrow")
+    db._conn.execute("UPDATE entries SET created_at = ? WHERE id = ?", ("2026-01-01T08:00:00.000Z", e["id"]))
+    db._conn.commit()
+    processed = db.backfill_dates(anchor_dates)
+    assert processed == 1
+    assert db.get_entry(e["id"])["dates"] == ["2026-01-02"]   # day after creation, not today
+    assert db.backfill_dates(anchor_dates) == 0               # flag set: never runs twice
 
 
 def test_set_content_in_place_keeps_id_and_vectors(db):

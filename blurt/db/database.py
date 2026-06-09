@@ -82,6 +82,29 @@ class Database:
     def _row_to_entry(row: sqlite3.Row | None) -> dict | None:
         return dict(row) if row is not None else None
 
+    def _with_dates(self, entries: list[dict]) -> list[dict]:
+        """Attach each entry's frozen date references as a sorted ISO list.
+
+        One batched query for the whole set, so listing the stream or a page of
+        search results stays a single round trip rather than N+1.
+        """
+        if not entries:
+            return entries
+        ids = [e["id"] for e in entries]
+        placeholders = ",".join("?" * len(ids))
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT entry_id, date FROM entry_dates WHERE entry_id IN ({placeholders}) "
+                f"ORDER BY date",
+                ids,
+            ).fetchall()
+        by_entry: dict[int, list[str]] = {}
+        for r in rows:
+            by_entry.setdefault(r["entry_id"], []).append(r["date"])
+        for e in entries:
+            e["dates"] = by_entry.get(e["id"], [])
+        return entries
+
     # ---- entries -------------------------------------------------------
 
     def add_entry(self, content: str) -> dict:
@@ -95,7 +118,8 @@ class Database:
             row = self._conn.execute(
                 f"SELECT {ENTRY_COLUMNS} FROM entries WHERE id = ?", (entry_id,)
             ).fetchone()
-        return self._row_to_entry(row)
+        entry = self._row_to_entry(row)
+        return self._with_dates([entry])[0] if entry is not None else None
 
     def list_entries(self, limit: int = 50, offset: int = 0) -> list[dict]:
         # Newest first. id is monotonic with insert order, so ordering by it is
@@ -105,7 +129,7 @@ class Database:
                 f"SELECT {ENTRY_COLUMNS} FROM entries ORDER BY id DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return self._with_dates([dict(r) for r in rows])
 
     def count_active_entries(self) -> int:
         with self._lock:
@@ -261,7 +285,89 @@ class Database:
                 f"WHERE is_superseded = 0 AND content LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ?",
                 (pattern, limit),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return self._with_dates([dict(r) for r in rows])
+
+    def entries_in_ranges(self, ranges: list[tuple[str, str]], limit: int) -> list[dict]:
+        """Active entries with a frozen date inside any (start, end) ISO range.
+
+        Powers date search: a query like "next week" resolves to a range, and any
+        note whose anchored date lands in it surfaces, soonest date first. Bounds
+        are inclusive. Superseded notes are excluded, matching every other read.
+        """
+        if not ranges:
+            return []
+        clauses = " OR ".join("ed.date BETWEEN ? AND ?" for _ in ranges)
+        params: list = []
+        for start, end in ranges:
+            params.extend([start, end])
+        params.append(limit)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join('e.' + c for c in ENTRY_COLUMNS.split(', '))}, "
+                f"MIN(ed.date) AS match_date "
+                f"FROM entries e JOIN entry_dates ed ON ed.entry_id = e.id "
+                f"WHERE e.is_superseded = 0 AND ({clauses}) "
+                f"GROUP BY e.id ORDER BY match_date ASC, e.id DESC LIMIT ?",
+                params,
+            ).fetchall()
+        out = [dict(r) for r in rows]
+        for e in out:
+            e.pop("match_date", None)  # ordering helper, not part of the entry shape
+        return self._with_dates(out)
+
+    def set_entry_dates(self, entry_id: int, dates: list[str]) -> None:
+        """Replace the frozen date references for an entry (idempotent on re-save)."""
+        with self._lock:
+            self._conn.execute("DELETE FROM entry_dates WHERE entry_id = ?", (entry_id,))
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO entry_dates(entry_id, date) VALUES (?, ?)",
+                [(entry_id, d) for d in dates],
+            )
+            self._conn.commit()
+
+    # Bump when the date parser changes so existing notes get re-frozen with the
+    # newer logic on next launch (a no-op once they're already at this version).
+    _DATES_PARSER_VERSION = "2"
+
+    def reparse_dates(self, resolve) -> int:
+        """Re-freeze every active note's dates with ``resolve(content, day)``.
+
+        Each note is anchored to its OWN creation date, so a relative phrase resolves
+        to what it meant when written, not to today. ``resolve`` is injected so the
+        storage layer stays unaware of how parsing works. Used both by the startup
+        backfill and when the date-format setting changes. Returns notes processed.
+        """
+        from datetime import date
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, content, created_at FROM entries WHERE is_superseded = 0"
+            ).fetchall()
+        for r in rows:
+            day = date.fromisoformat(r["created_at"][:10])
+            self.set_entry_dates(r["id"], resolve(r["content"], day))
+        return len(rows)
+
+    def backfill_dates(self, resolve) -> int:
+        """One-time per parser version: freeze dates for notes that predate it.
+
+        Skipped entirely once notes are already at the current version, so it costs
+        nothing on a normal launch. Bumping ``_DATES_PARSER_VERSION`` re-freezes all
+        notes once with the newer logic.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = 'dates_parser_version'"
+            ).fetchone()
+            if row is not None and row["value"] == self._DATES_PARSER_VERSION:
+                return 0
+        count = self.reparse_dates(resolve)
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES ('dates_parser_version', ?)",
+                (self._DATES_PARSER_VERSION,),
+            )
+            self._conn.commit()
+        return count
 
     def knn(self, query_vec: list[float], k: int) -> list[tuple[int, float]]:
         """Return (chunk_id, similarity) for the k nearest active chunks."""
@@ -300,7 +406,7 @@ class Database:
             rows = self._conn.execute(
                 f"SELECT {ENTRY_COLUMNS} FROM entries WHERE id IN ({placeholders})", entry_ids
             ).fetchall()
-        return [dict(r) for r in rows]
+        return self._with_dates([dict(r) for r in rows])
 
     # ---- maintenance ---------------------------------------------------
 
@@ -316,6 +422,7 @@ class Database:
         """Wipe everything. Test/dev only."""
         with self._lock:
             self._conn.execute("DELETE FROM vec_chunks")
+            self._conn.execute("DELETE FROM entry_dates")
             self._conn.execute("DELETE FROM chunks")
             self._conn.execute("DELETE FROM entries")
             self._conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('entries','chunks')")
