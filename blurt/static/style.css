@@ -307,8 +307,10 @@ body {
 .slash-item.focused { background: var(--highlight); }
 .slash-item .slash-label { color: var(--fg); }
 .slash-item .slash-syntax { color: var(--muted); font-size: 12px; }
+#compose-row { display: flex; align-items: flex-end; gap: 6px; }
 #compose {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   resize: none;
@@ -331,15 +333,15 @@ body {
 #inputhint .undo-link { color: var(--accent); cursor: pointer; }
 #inputhint .undo-link:hover { text-decoration: underline; }
 
-/* "store a secret": a faint icon button at the input's edge, brightens on hover */
+/* "store a secret": a faint icon button beside the input, brightens on hover.
+   A flex sibling of the textarea (not overlaid), so the click always lands. */
 #add-secret {
-  position: absolute;
-  right: 0;
-  bottom: 12px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: 5px;
+  margin-bottom: 2px;
   background: none;
   border: none;
   color: var(--muted);

@@ -1397,6 +1397,13 @@ window.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "f" || ev.key === "F")) {
     ev.preventDefault(); el.searchOverlay.hidden ? openSearch() : closeSearch(); return;
   }
+  // Cmd/Ctrl+K: store a secret. Keyboard-first; the lock button is the click path.
+  // Only when secrets are available (the button is shown) and nothing modal is open.
+  if ((ev.metaKey || ev.ctrlKey) && (ev.key === "k" || ev.key === "K")) {
+    if (!el.addSecret.hidden && el.searchOverlay.hidden && el.settings.hidden) {
+      ev.preventDefault(); openSecretForm(); return;
+    }
+  }
   // Swallow Cmd/Ctrl+S so the browser's "save page" dialog never appears. There is no
   // export to trigger: notes are continuously mirrored to scratchpad.md already.
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "s" || ev.key === "S")) { ev.preventDefault(); return; }
@@ -1413,6 +1420,7 @@ window.addEventListener("keydown", (ev) => {
     // Esc closes search no matter where focus is (not just when the search input
     // holds it) — every action is a keystroke away.
     if (!el.searchOverlay.hidden) { ev.preventDefault(); closeSearch(); return; }
+    if (!el.secretForm.hidden) { ev.preventDefault(); closeSecretForm(); return; }
     if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); return; }
     if (dismissWelcome()) { ev.preventDefault(); return; }
     if (!el.cheatsheet.hidden) { ev.preventDefault(); hideCheatsheet(); return; }
