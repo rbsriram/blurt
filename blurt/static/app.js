@@ -825,7 +825,8 @@ function renderPeek() {
   if (p.matches.length > 1) {
     const count = document.createElement("div");
     count.id = "peek-count";
-    count.innerHTML = `${p.matches.length} matches` + (p.focus < 0 ? ` · <b>↑</b> to browse` : "");
+    const label = p.query ? `${p.matches.length} matches` : "recent";   // empty query = ↑ recent-browse
+    count.innerHTML = label + (p.focus < 0 ? ` · <b>↑</b> to browse` : "");
     el.peek.appendChild(count);
   }
 
@@ -849,6 +850,16 @@ function exitPeekToInput() {           // ↓ past the newest: unfocus, peek sta
   state.peek.focus = -1;
   renderPeek();
   focusComposeEnd();
+}
+
+// ↑ from an empty input box: browse recent notes, newest first (like shell history).
+// Seeds the peek with recent entries (empty query = "recent" mode) and steps in.
+async function browseRecent() {
+  const data = await api.get(`/api/entries?limit=8`);
+  const recent = (data.entries || []).filter((e) => !e.is_superseded);
+  if (!recent.length) return;
+  setPeek(recent, "");   // empty query -> renderPeek labels it "recent", not "matches"
+  enterPeek();
 }
 function closePeek() {                 // esc: dismiss the peek entirely
   clearPeek();
@@ -1096,6 +1107,7 @@ function keyListHtml() {
     [`clear it + enter`, "delete it"],
     [`${MOD}+z`, "undo the last save / delete"],
     // browsing the peek (the as-you-type matches)
+    [`↑`, "browse recent notes (from an empty box)"],
     [`${MOD}+↑`, "browse the peek"],
     [`↑ / ↓`, "move through / leave the peek"],
     [`enter`, "open the focused match"],
@@ -1456,6 +1468,8 @@ el.compose.addEventListener("keydown", (ev) => {
     if (p.matches.length) { ev.preventDefault(); enterPeek(); return; }
     // peek not currently up (e.g. just backed out of an edit): re-summon it for the draft
     if (hasGhostableText()) { ev.preventDefault(); fireGhost(true); return; }
+    // empty box: browse recent notes, newest first (↑ again steps further back)
+    if (!el.compose.value) { ev.preventDefault(); browseRecent(); return; }
   }
   if (ev.key === "Escape" && p.matches.length) { ev.preventDefault(); closePeek(); return; }
   if (ev.key === "Enter") {
