@@ -404,10 +404,14 @@ function openSecretForm() {
   // these fields (this is our own local vault, not a login form).
   const NOFILL = 'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" '
     + 'data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other"';
+  // Not type=password on purpose: a real password field makes macOS iCloud Passwords
+  // (and others) pop their autofill UI, which Apple won't suppress via attributes. We
+  // use a plain text field masked with CSS (-webkit-text-security), so it reads as
+  // hidden but never triggers password autofill. "show" toggles the masking.
   el.secretForm.innerHTML = `
     <input id="sec-label" placeholder="key" ${NOFILL} />
     <div id="sec-value-row">
-      <input id="sec-value" type="password" placeholder="secret" ${NOFILL} />
+      <input id="sec-value" placeholder="secret" ${NOFILL} />
       <span id="sec-show" class="secret-toggle" hidden>show</span>
     </div>`;
   el.secretForm.hidden = false;
@@ -417,9 +421,8 @@ function openSecretForm() {
   // The show/hide toggle only appears once there's something to reveal.
   value.addEventListener("input", () => { show.hidden = !value.value; });
   show.addEventListener("click", () => {
-    const reveal = value.type === "password";
-    value.type = reveal ? "text" : "password";
-    show.textContent = reveal ? "hide" : "show";
+    const revealed = value.classList.toggle("revealed");   // toggles the CSS masking
+    show.textContent = revealed ? "hide" : "show";
     value.focus();
   });
   const onKey = (ev) => {
