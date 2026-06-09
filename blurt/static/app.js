@@ -229,6 +229,8 @@ const el = {
   cheatsheet: document.getElementById("cheatsheet"),
   settings: document.getElementById("settings"),
   slashmenu: document.getElementById("slashmenu"),
+  composeRow: document.getElementById("compose-row"),
+  secretForm: document.getElementById("secret-form"),
   welcome: document.getElementById("welcome"),
   splash: document.getElementById("splash"),
   erase: document.getElementById("erase"),
@@ -247,6 +249,8 @@ const state = {
   // slash menu: open when the current line is "/<query>"; items is the filtered list.
   slash: { open: false, items: [], focus: 0, lineStart: 0 },
 };
+
+let secretsAvailable = false;   // set from /api/status; gates the lock button and /secret
 
 const DRAFT_KEY = "blurt-draft";
 const THEME_KEY = "blurt-theme";
@@ -267,39 +271,46 @@ function entryNode(e) {
   node.dataset.id = e.id;
   const body = document.createElement("div");
   body.className = "entry-body";
-  body.innerHTML = md(e.content);
-  // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
-  // never hijack editing). Anywhere else → edit the note.
-  body.addEventListener("click", (ev) => {
-    const cb = ev.target.closest(".checkbox");
-    if (cb) { ev.stopPropagation(); toggleCheckbox(node, e, cb); return; }
-    const a = ev.target.closest("a");
-    if (a) {
-      ev.preventDefault();
-      if (ev.metaKey || ev.ctrlKey) window.open(a.href, "_blank", "noopener");
-      else openEditor(node, e);
-      return;
-    }
-    openEditor(node, e);
-  });
+  if (e.is_secret) {
+    // A secret note, one line: label | masked value | show. Plain-text label (no
+    // markdown block, which would force a second line). Not inline-editable.
+    body.classList.add("secret-note");
+    const lbl = document.createElement("span");
+    lbl.className = "secret-label";
+    lbl.textContent = e.content;
+    const div = document.createElement("span");
+    div.className = "sec-div";
+    body.append(lbl, div, secretControl(e));
+    // Click the label/row to edit in place (the value's copy/show controls stop
+    // propagation, so clicking those acts on the value, not the editor).
+    body.addEventListener("click", () => openSecretEditor(node, e));
+  } else {
+    body.innerHTML = md(e.content);
+    // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
+    // never hijack editing). Anywhere else → edit the note.
+    body.addEventListener("click", (ev) => {
+      const cb = ev.target.closest(".checkbox");
+      if (cb) { ev.stopPropagation(); toggleCheckbox(node, e, cb); return; }
+      const a = ev.target.closest("a");
+      if (a) {
+        ev.preventDefault();
+        if (ev.metaKey || ev.ctrlKey) window.open(a.href, "_blank", "noopener");
+        else openEditor(node, e);
+        return;
+      }
+      openEditor(node, e);
+    });
+  }
 
-  // Footer under the note: retire affordance on the left (hover-only), faint
-  // timestamp pinned to the bottom-right.
+  // Footer under the note. No delete button: a note is deleted by emptying it
+  // (⌘A, delete) and pressing Enter, like any text pad. The date chip sits on the
+  // left (it's about the content); the faint saved-time stays at the far right.
   const foot = document.createElement("div");
   foot.className = "entry-foot";
-  const action = document.createElement("button");
-  action.className = "entry-action";
-  action.textContent = "×";
-  action.title = "delete this note";
-  action.addEventListener("click", (ev) => { ev.stopPropagation(); retireEntry(e.id); });
   const time = document.createElement("div");
   time.className = "entry-time";
   time.textContent = relTime(e.created_at);
-  // The note's referenced date is a tagged pill on the LEFT (it's about the
-  // content); the faint saved-time stays at the far right (it's metadata). Kept
-  // apart so the two never read as a confusing pair of dates.
   const chip = dateChip(e.dates);
-  foot.append(action);
   if (chip) foot.append(chip);
   foot.append(time);
 
@@ -333,6 +344,149 @@ function prependEntry(e) {
   if (hint) hint.remove();
   el.stream.insertBefore(entryNode(e), el.stream.firstChild);
   state.offset += 1;
+}
+
+// ---------------------------------------------------------------- secrets
+// Decrypt a secret on demand (server holds the key in the OS keychain). Returns the
+// value or null on failure. Fetched only when you reveal/copy, never sent with the list.
+async function fetchSecret(id) {
+  const res = await api.post(`/api/secrets/${id}/reveal`, {});
+  return res.ok && res.data ? res.data.value : null;
+}
+
+// The masked control under a secret note. Click the value to COPY it (the common
+// action; clipboard auto-clears after 20s, best-effort). The small "show" toggles
+// reveal/hide (auto re-masks after 15s). Both stop propagation.
+function secretControl(e) {
+  const wrap = document.createElement("div");
+  wrap.className = "secret";
+  const mask = document.createElement("code");
+  mask.className = "secret-mask";
+  mask.textContent = "••••••••";
+  mask.title = "click to copy";
+  const toggle = document.createElement("span");
+  toggle.className = "secret-toggle";
+  toggle.textContent = "show";
+  wrap.append(mask, toggle);
+
+  let shown = false, hideTimer = null;
+  const hide = () => { if (shown) mask.textContent = "••••••••"; toggle.textContent = "show"; shown = false; clearTimeout(hideTimer); };
+  toggle.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    if (shown) return hide();
+    const v = await fetchSecret(e.id);
+    if (v == null) { flashHint("couldn't unlock that secret"); return; }
+    mask.textContent = v; toggle.textContent = "hide"; shown = true;
+    hideTimer = setTimeout(hide, 15000);
+  });
+  mask.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    const v = await fetchSecret(e.id);
+    if (v == null) { flashHint("couldn't unlock that secret"); return; }
+    try {
+      await navigator.clipboard.writeText(v);
+      flashHint("copied · clipboard clears in 20s");
+      // Best-effort auto-clear: only wipe if the clipboard still holds our value.
+      setTimeout(async () => {
+        try { if ((await navigator.clipboard.readText()) === v) await navigator.clipboard.writeText(""); } catch { /* not focused / denied */ }
+      }, 20000);
+    } catch { flashHint("couldn't copy"); }
+  });
+  return wrap;
+}
+
+// The "store a secret" form: a label (visible, searchable) + the value (encrypted).
+// Keyboard only: enter saves, esc cancels, enter on the label jumps to the value.
+// Build the one-line "key │ secret  show" editing row into `container`, pre-filled
+// from opts.key/opts.val. Shared by the bottom create form and the inline editor.
+// enter on the key jumps to the value; enter on the value calls onSubmit(key, val);
+// esc calls onCancel. Returns the two input elements so the caller can focus one.
+//
+// Not type=password on purpose: a real password field makes macOS iCloud Passwords
+// pop its autofill UI (which Apple won't suppress via attributes). We mask a plain
+// text field with CSS (-webkit-text-security) instead; "show" toggles that.
+function wireSecretFields(container, { key = "", val = "", onSubmit, onCancel }) {
+  // data-*-ignore + autocomplete keep password managers from injecting autofill icons.
+  const NOFILL = 'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" '
+    + 'data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other"';
+  container.innerHTML = `
+    <input class="sec-key" placeholder="key" ${NOFILL} />
+    <span class="sec-div"></span>
+    <input class="sec-val" placeholder="secret" ${NOFILL} />
+    <span class="sec-show secret-toggle" hidden>show</span>`;
+  const keyEl = container.querySelector(".sec-key");
+  const valEl = container.querySelector(".sec-val");
+  const show = container.querySelector(".sec-show");
+  keyEl.value = key;
+  valEl.value = val;
+  show.hidden = !valEl.value;
+  valEl.addEventListener("input", () => { show.hidden = !valEl.value; });
+  show.addEventListener("click", () => {
+    const revealed = valEl.classList.toggle("revealed");
+    show.textContent = revealed ? "hide" : "show";
+    valEl.focus();
+  });
+  const onKey = (ev) => {
+    if (ev.key === "Escape") { ev.preventDefault(); onCancel(); return; }
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (ev.target === keyEl && keyEl.value.trim()) { valEl.focus(); return; }  // key -> value
+    onSubmit(keyEl.value.trim(), valEl.value);
+  };
+  keyEl.addEventListener("keydown", onKey);
+  valEl.addEventListener("keydown", onKey);
+  return { keyEl, valEl };
+}
+
+// Create a new secret: the bottom form replaces the compose box while open.
+function openSecretForm() {
+  if (!el.secretForm.hidden) return closeSecretForm();
+  el.secretForm.hidden = false;
+  el.composeRow.hidden = true;
+  const { keyEl } = wireSecretFields(el.secretForm, {
+    onCancel: closeSecretForm,
+    onSubmit: async (label, value) => {
+      if (!label || !value) { flashHint("need both a key and a secret"); return; }
+      const res = await api.post("/api/secrets", { label, value });
+      if (res.ok && res.data) { prependEntry(res.data); closeSecretForm(); flashHint("secret saved, encrypted"); }
+      else { flashHint(res.status === 503 ? "no keychain available for secrets" : "couldn't save secret"); }
+    },
+  });
+  keyEl.focus();
+}
+
+function closeSecretForm() {
+  el.secretForm.hidden = true;
+  el.secretForm.innerHTML = "";
+  el.composeRow.hidden = false;
+  focusComposeEnd();
+}
+
+// Edit a secret in place: the note row becomes the same key │ value editor, pre-filled
+// with the decrypted value. Enter saves (re-encrypts); emptying the key or value and
+// pressing Enter deletes the whole secret (recoverable); Esc reverts.
+async function openSecretEditor(node, e) {
+  const body = node.querySelector(".entry-body");
+  if (!body || body.classList.contains("editing-secret")) return;
+  const cur = await fetchSecret(e.id);
+  if (cur == null) { flashHint("couldn't unlock that secret"); return; }
+  if (state.cancelEdit) state.cancelEdit();
+  el.stream.classList.add("editing");
+  body.className = "entry-body secret-fields editing-secret";
+  const stop = () => { state.cancelEdit = null; el.stream.classList.remove("editing"); };
+  state.cancelEdit = () => { stop(); node.replaceWith(entryNode(e)); focusComposeEnd(); };
+  const { valEl } = wireSecretFields(body, {
+    key: e.content,
+    val: cur,
+    onCancel: () => state.cancelEdit && state.cancelEdit(),
+    onSubmit: async (label, value) => {
+      if (!label || !value) { stop(); retireEntry(e.id); focusComposeEnd(); return; }  // emptied -> delete
+      const res = await api.patch(`/api/secrets/${e.id}`, { label, value });
+      if (res.ok && res.data) { stop(); node.replaceWith(entryNode(res.data)); focusComposeEnd(); }
+      else { flashHint("couldn't save secret"); }
+    },
+  });
+  valEl.focus();
 }
 
 async function loadStream(reset = true) {
@@ -419,6 +573,7 @@ const SLASH_ITEMS = [
   { label: "quote",      hint: ">",     keys: "quote blockquote",                    insert: "> " },
   { label: "code block", hint: "```",   keys: "code codeblock pre block",            insert: "```\n\n```\n", caret: 4 },
   { label: "divider",    hint: "---",   keys: "divider rule line hr separator",      insert: "---\n" },
+  { label: "secret",     hint: "encrypted", keys: "secret password credential pwd pin key lock", action: "secret" },
 ];
 
 function updateSlashMenu() {
@@ -431,8 +586,9 @@ function updateSlashMenu() {
   const m = ta.value.slice(lineStart, pos).match(/^\/([\w-]*)$/);
   if (!m) { closeSlash(); return; }
   const q = m[1].toLowerCase();
-  const items = q ? SLASH_ITEMS.filter((it) => it.keys.split(" ").some((k) => k.startsWith(q)))
-                  : SLASH_ITEMS.slice();
+  let items = q ? SLASH_ITEMS.filter((it) => it.keys.split(" ").some((k) => k.startsWith(q)))
+                : SLASH_ITEMS.slice();
+  if (!secretsAvailable) items = items.filter((it) => it.action !== "secret");  // no keychain
   if (!items.length) { closeSlash(); return; }
   state.slash = { open: true, items, focus: 0, lineStart };
   renderSlash();
@@ -463,6 +619,14 @@ function chooseSlash(i) {
   const it = state.slash.items[i];
   if (!it) return;
   const ta = el.compose;
+  if (it.action === "secret") {                 // drop the "/secret" and open the form
+    ta.setRangeText("", state.slash.lineStart, ta.selectionStart, "end");
+    closeSlash();
+    autoGrow();
+    localStorage.setItem(DRAFT_KEY, ta.value);
+    openSecretForm();
+    return;
+  }
   ta.setRangeText(it.insert, state.slash.lineStart, ta.selectionStart, "end");
   if (it.caret != null) {                       // park the cursor inside (e.g. a code block)
     const c = state.slash.lineStart + it.caret;
@@ -567,12 +731,16 @@ function openEditor(node, e, hooks = {}) {
     }
     if (ev.key === "Enter") {
       ev.preventDefault();
-      if (!ta.value.trim()) return;
+      // Emptied an existing note, then confirmed: delete it (recoverable via the
+      // undo stub / ⌘Z). Matches outliner/notes-app muscle memory. Focus returns to
+      // the input box so the keyboard flow never strands you.
+      if (!ta.value.trim()) { stopEditing(); retireEntry(e.id); focusComposeEnd(); return; }
       const res = await api.patch(`/api/entries/${e.id}`, { content: ta.value });
       if (res.ok) {
         stopEditing();
         applyEdit(node, e, res.data);
         hooks.onSaved?.();
+        focusComposeEnd();
       }
     } else if (ev.key === "Escape") {
       ev.preventDefault();
@@ -630,12 +798,26 @@ function renderPeek() {
     const time = document.createElement("span");
     time.className = "peek-time";
     time.textContent = relTime(m.created_at);
-    const txt = document.createElement("span");
-    txt.textContent = (i === p.focus)
-      ? m.content.replace(/\s+/g, " ")
-      : m.content.replace(/\s+/g, " ").slice(0, PEEK_SNIPPET);
-    line.append(time, txt);
-    highlightTerms(txt, p.query);
+    line.appendChild(time);
+    if (m.is_secret) {
+      // Show it as a secret here too: label │ masked value | show (same as search).
+      const sec = document.createElement("span");
+      sec.className = "peek-secret";
+      const lbl = document.createElement("span");
+      lbl.textContent = m.content;
+      const div = document.createElement("span");
+      div.className = "sec-div";
+      sec.append(lbl, div, secretControl(m));
+      line.appendChild(sec);
+      highlightTerms(lbl, p.query);
+    } else {
+      const txt = document.createElement("span");
+      txt.textContent = (i === p.focus)
+        ? m.content.replace(/\s+/g, " ")
+        : m.content.replace(/\s+/g, " ").slice(0, PEEK_SNIPPET);
+      line.appendChild(txt);
+      highlightTerms(txt, p.query);
+    }
     line.addEventListener("click", () => setFocus(i));
     el.peek.appendChild(line);
   });
@@ -689,13 +871,15 @@ async function editPeekFocused() {
   if (!node) return;                          // gone (raced with a delete) — bail quietly
   const e = state.entries.get(String(m.id)) || m;
   node.scrollIntoView({ block: "center" });
-  openEditor(node, e, {                       // openEditor clears the peek; ↑ re-summons it after
-    onSaved: () => {                          // trigger text has done its job: clean slate
-      el.compose.value = "";
-      localStorage.removeItem(DRAFT_KEY);
-      autoGrow();
-    },
-  });
+  // Stepping into an existing note from the peek: the draft was only the search
+  // trigger, so clear it now (no leftover duplicate in the input box) and return
+  // focus there afterward via the editor's own save/cancel/delete paths.
+  el.compose.value = "";
+  localStorage.removeItem(DRAFT_KEY);
+  autoGrow();
+  clearPeek();
+  if (e.is_secret) openSecretEditor(node, e);   // the key│value editor, not the text editor
+  else openEditor(node, e);
 }
 
 async function supersedePeekFocused() {
@@ -822,8 +1006,21 @@ function resultNode(e, query, i) {
   if (chip) { chip.classList.add("result-date"); time.appendChild(chip); }
   const body = document.createElement("div");
   body.className = "result-body";
-  body.innerHTML = md(e.content);
-  highlightTerms(body, query);
+  if (e.is_secret) {
+    // Show it as a secret here too: label │ masked value | show, so it's obvious
+    // it's a secret and you can reveal/copy straight from search.
+    body.classList.add("secret-note");
+    const lbl = document.createElement("span");
+    lbl.className = "secret-label";
+    lbl.textContent = e.content;
+    const div = document.createElement("span");
+    div.className = "sec-div";
+    body.append(lbl, div, secretControl(e));
+    highlightTerms(lbl, query);
+  } else {
+    body.innerHTML = md(e.content);
+    highlightTerms(body, query);
+  }
   node.append(time, body);
   node.addEventListener("click", () => locateEntry(e.id));
   return node;
@@ -891,13 +1088,19 @@ function keyListHtml() {
     [`enter`, "save the note"],
     [`shift+enter`, "new line"],
     [`/`, "formatting menu (at line start)"],
-    [`${MOD}+↑`, "browse matches in the peek"],
-    [`↑ / ↓`, "move through the peek"],
-    [`enter`, "edit the focused match"],
+    [`${MOD}+k`, "store a secret (encrypted)"],
+    [`${MOD}+f`, "search"],
+    [`esc`, "back to typing (closes anything open)"],
+    // a note in the stream
+    [`click a note`, "edit it in place"],
+    [`clear it + enter`, "delete it"],
+    [`${MOD}+z`, "undo the last save / delete"],
+    // browsing the peek (the as-you-type matches)
+    [`${MOD}+↑`, "browse the peek"],
+    [`↑ / ↓`, "move through / leave the peek"],
+    [`enter`, "open the focused match"],
     [`${MOD}+delete`, "delete the focused match"],
     [`${MOD}+c`, "copy the focused match"],
-    [`esc`, "close the peek"],
-    [`${MOD}+f`, "search"],
     [`ctrl+shift+d`, "dark / light"],
     [`?`, "this cheatsheet"],
   ];
@@ -972,8 +1175,6 @@ function settingsHtml(d) {
         <span class="path" id="set-path">${escapeHtml(d.scratchpad_path || "")}</span>
         ${changeBtn}
       </div>
-      <div class="note">Your notes are mirrored here as plain Markdown, always up to date.
-        Point it at any folder (e.g. inside an Obsidian or Dropbox folder) to keep them there.</div>
     </div>
     <div class="row">
       <div class="label">date format</div>
@@ -983,8 +1184,6 @@ function settingsHtml(d) {
           <button data-order="MDY" class="${d.date_order === "MDY" ? "on" : ""}">month / day / year</button>
         </div>
       </div>
-      <div class="note">How Blurt reads ambiguous numeric dates like 6/4. Spelled-out
-        months (6 Jun) are never ambiguous and always work.</div>
     </div>
     <div class="row">
       <div class="label">smart search engine</div>
@@ -1174,6 +1373,8 @@ function renderEngineStatus(status) {
   lastStatus = status;
   const node = document.getElementById("set-engine");
   if (node) node.innerHTML = engineStatusHtml(status);
+  // Enables ⌘K / the /secret command only when there's a keychain to hold the key.
+  secretsAvailable = !!status.secrets_available;
 }
 
 async function initErase() {
@@ -1292,6 +1493,13 @@ window.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "f" || ev.key === "F")) {
     ev.preventDefault(); el.searchOverlay.hidden ? openSearch() : closeSearch(); return;
   }
+  // Cmd/Ctrl+K: store a secret. Keyboard-first; the lock button is the click path.
+  // Only when secrets are available (the button is shown) and nothing modal is open.
+  if ((ev.metaKey || ev.ctrlKey) && (ev.key === "k" || ev.key === "K")) {
+    if (secretsAvailable && el.searchOverlay.hidden && el.settings.hidden) {
+      ev.preventDefault(); openSecretForm(); return;
+    }
+  }
   // Swallow Cmd/Ctrl+S so the browser's "save page" dialog never appears. There is no
   // export to trigger: notes are continuously mirrored to scratchpad.md already.
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "s" || ev.key === "S")) { ev.preventDefault(); return; }
@@ -1305,13 +1513,16 @@ window.addEventListener("keydown", (ev) => {
     return;
   }
   if (ev.key === "Escape") {
-    // Esc closes search no matter where focus is (not just when the search input
-    // holds it) — every action is a keystroke away.
+    // Esc is "get me back to typing": close whatever's open, no matter where focus
+    // is, and if nothing's open just return focus to the input box.
     if (!el.searchOverlay.hidden) { ev.preventDefault(); closeSearch(); return; }
-    if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); return; }
-    if (dismissWelcome()) { ev.preventDefault(); return; }
-    if (!el.cheatsheet.hidden) { ev.preventDefault(); hideCheatsheet(); return; }
+    if (!el.secretForm.hidden) { ev.preventDefault(); closeSecretForm(); return; }
+    if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); focusComposeEnd(); return; }
+    if (dismissWelcome()) { ev.preventDefault(); focusComposeEnd(); return; }
+    if (!el.cheatsheet.hidden) { ev.preventDefault(); hideCheatsheet(); focusComposeEnd(); return; }
     if (state.cancelEdit) { ev.preventDefault(); state.cancelEdit(); return; }
+    ev.preventDefault(); focusComposeEnd();   // nothing open: just land in the input box
+    return;
   }
   // Cmd/Ctrl+, opens Settings — the standard shortcut, and the path for a plain
   // browser where there is no native menu to trigger it.

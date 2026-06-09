@@ -35,8 +35,13 @@
     <div id="inputbar">
       <!-- slash menu: type "/" at the start of a line to insert formatting -->
       <div id="slashmenu" hidden></div>
-      <textarea id="compose" rows="1" placeholder="just type."
-                autocomplete="off" autocapitalize="off" spellcheck="false" autofocus></textarea>
+      <!-- store a credential, encrypted (app.js openSecretForm). Opened by ⌘K/Ctrl+K
+           or the /secret slash command; replaces the compose box while open. -->
+      <div id="secret-form" class="secret-fields" hidden></div>
+      <div id="compose-row">
+        <textarea id="compose" rows="1" placeholder="just type."
+                  autocomplete="off" autocapitalize="off" spellcheck="false" autofocus></textarea>
+      </div>
       <div id="inputhint"></div>
     </div>
   </main>

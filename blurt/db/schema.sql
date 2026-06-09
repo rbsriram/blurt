@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS entry_dates (
     PRIMARY KEY (entry_id, date)
 );
 
+-- Encrypted secret values (see core/secrets.py). The note's `content` holds only
+-- the human label; the value lives here as ciphertext and never enters the mirror
+-- or the embedding index. One secret value per note.
+CREATE TABLE IF NOT EXISTS secrets (
+    entry_id  INTEGER PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+    blob      TEXT    NOT NULL                            -- Fernet token (encrypted)
+);
+
 CREATE INDEX IF NOT EXISTS idx_entries_created    ON entries(created_at);
 CREATE INDEX IF NOT EXISTS idx_entries_active     ON entries(is_superseded);
 CREATE INDEX IF NOT EXISTS idx_chunks_entry       ON chunks(entry_id);

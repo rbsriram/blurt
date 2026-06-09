@@ -59,11 +59,29 @@ Never set `BLURT_TESTING=1` on a server reachable by anyone but you. Because v1
 has no auth, combining test mode with a non-localhost bind would let anyone on
 that network erase your notes. Use it only for `pytest` and local work.
 
+## Secrets (encrypted credentials)
+
+Notes are stored in plaintext (you rely on your disk encryption). The exception is a
+secret jotted via `Cmd/Ctrl+K` / `/secret`: its value is encrypted at rest with
+Fernet (AES-128-CBC + HMAC), and the key lives in the OS keychain (macOS Keychain /
+Windows Credential Locker / Linux Secret Service) via `keyring`, never in the DB. The
+note's content is only the label; the encrypted value lives in a separate table and is
+never written to `scratchpad.md` or the embedding index. The key is per-machine, so a
+copied DB will not decrypt elsewhere.
+
+This is honestly positioned as "a safer place to jot a credential than a plaintext
+note," NOT a password manager. It defends against: other OS users, a stolen disk or
+backup, plaintext leaking into a synced folder, and shoulder-surfing. It does NOT
+defend against malware or a keylogger running while your machine is unlocked (once a
+secret is decrypted into memory, anything running as you can read it) or a compromised
+OS account. For high-value secrets, use a dedicated manager.
+
 ## What v1 explicitly does NOT do
 
 - No user accounts / passwords (single user, localhost).
 - No CSRF protection (no cookies, no sessions).
-- No encryption at rest (rely on your disk encryption).
+- Notes are not encrypted at rest (rely on your disk encryption); only secrets are
+  (see above).
 
 ## Before exposing beyond localhost (v2, mandatory)
 

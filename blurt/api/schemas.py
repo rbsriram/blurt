@@ -74,6 +74,25 @@ class NotesDirRequest(BaseModel):
         return v
 
 
+class SecretCreate(BaseModel):
+    label: str   # the visible, searchable description ("gmail password")
+    value: str   # the secret itself; encrypted at rest, never indexed or mirrored
+
+    @field_validator("label")
+    @classmethod
+    def _check_label(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("label may not be empty")
+        return v
+
+    @field_validator("value")
+    @classmethod
+    def _check_value(cls, v: str) -> str:
+        if not v:
+            raise ValueError("secret value may not be empty")
+        return v
+
+
 class DateFormatRequest(BaseModel):
     order: str  # "DMY" (day-first) or "MDY" (month-first)
 
