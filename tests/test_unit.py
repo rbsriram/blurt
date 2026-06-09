@@ -10,6 +10,7 @@ import os
 from datetime import date
 
 import pytest
+from cryptography.fernet import Fernet
 
 from blurt.api.schemas import CheckboxToggle, EntryCreate, QueryRequest
 from blurt.config import Settings
@@ -19,6 +20,7 @@ from blurt.core.dateref import anchor_dates, query_is_date_only, query_ranges
 from blurt.core.exporter import render_stream_markdown
 from blurt.core.indexer import Indexer
 from blurt.core.retriever import Retriever
+from blurt.core.secrets import SecretVault
 from blurt.db import Database
 
 DIM = 8
@@ -189,6 +191,52 @@ def test_reset_wipes(db):
     db.reset()
     assert db.count_active_entries() == 0
     assert db.list_entries() == []
+
+
+# ---- secrets ----------------------------------------------------------
+
+def test_secret_vault_round_trips():
+    vault = SecretVault(Fernet.generate_key())   # injected key, no keychain needed
+    token = vault.encrypt("hunter2")
+    assert token != "hunter2"                     # actually encrypted
+    assert vault.decrypt(token) == "hunter2"
+
+
+def test_secret_value_never_lands_in_content_or_index(db):
+    vault = SecretVault(Fernet.generate_key())
+    e = db.add_secret("gmail password", vault.encrypt("hunter2"))
+    got = db.get_entry(e["id"])
+    assert got["content"] == "gmail password"     # label is the content...
+    assert got["is_secret"] is True
+    assert "hunter2" not in got["content"]        # ...the value is not
+    # The value only comes back, decrypted, via the blob.
+    assert vault.decrypt(db.secret_blob(e["id"])) == "hunter2"
+    # A normal note is not flagged secret and has no blob.
+    plain = db.add_entry("just a note")
+    assert db.get_entry(plain["id"])["is_secret"] is False
+    assert db.secret_blob(plain["id"]) is None
+
+
+def test_secret_label_is_searchable_value_is_not(db):
+    vault = SecretVault(Fernet.generate_key())
+    db.add_secret("gmail password", vault.encrypt("hunter2"))
+    assert db.lexical_search("gmail", 10)         # findable by its label
+    assert db.lexical_search("hunter2", 10) == []  # never by its value
+
+
+def test_update_secret_blob_replaces_value(db):
+    vault = SecretVault(Fernet.generate_key())
+    e = db.add_secret("key", vault.encrypt("old"))
+    assert db.update_secret_blob(e["id"], vault.encrypt("new")) is True
+    assert vault.decrypt(db.secret_blob(e["id"])) == "new"
+    assert db.update_secret_blob(99999, "x") is False   # not a secret
+
+
+def test_reset_wipes_secrets(db):
+    db.add_secret("x", "blob")
+    db.reset()
+    assert db.secret_blob(1) is None
+    assert db.count_active_entries() == 0
 
 
 # ---- date references (dateref) ----------------------------------------

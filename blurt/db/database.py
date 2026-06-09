@@ -83,26 +83,34 @@ class Database:
         return dict(row) if row is not None else None
 
     def _with_dates(self, entries: list[dict]) -> list[dict]:
-        """Attach each entry's frozen date references as a sorted ISO list.
+        """Attach derived per-entry metadata: frozen date references and whether the
+        entry carries an encrypted secret.
 
-        One batched query for the whole set, so listing the stream or a page of
-        search results stays a single round trip rather than N+1.
+        Two batched queries for the whole set, so listing the stream or a page of
+        search results stays a couple of round trips rather than N+1.
         """
         if not entries:
             return entries
         ids = [e["id"] for e in entries]
         placeholders = ",".join("?" * len(ids))
         with self._lock:
-            rows = self._conn.execute(
+            date_rows = self._conn.execute(
                 f"SELECT entry_id, date FROM entry_dates WHERE entry_id IN ({placeholders}) "
                 f"ORDER BY date",
                 ids,
             ).fetchall()
+            secret_ids = {
+                r["entry_id"]
+                for r in self._conn.execute(
+                    f"SELECT entry_id FROM secrets WHERE entry_id IN ({placeholders})", ids
+                ).fetchall()
+            }
         by_entry: dict[int, list[str]] = {}
-        for r in rows:
+        for r in date_rows:
             by_entry.setdefault(r["entry_id"], []).append(r["date"])
         for e in entries:
             e["dates"] = by_entry.get(e["id"], [])
+            e["is_secret"] = e["id"] in secret_ids
         return entries
 
     # ---- entries -------------------------------------------------------
@@ -315,6 +323,37 @@ class Database:
             e.pop("match_date", None)  # ordering helper, not part of the entry shape
         return self._with_dates(out)
 
+    # ---- secrets -------------------------------------------------------
+
+    def add_secret(self, label: str, blob: str) -> dict:
+        """Create a secret note: content is the visible label, the encrypted value
+        lives in `secrets`. Returns the new entry (with is_secret set, never the value)."""
+        with self._lock:
+            cur = self._conn.execute("INSERT INTO entries(content) VALUES (?)", (label,))
+            entry_id = cur.lastrowid
+            self._conn.execute(
+                "INSERT INTO secrets(entry_id, blob) VALUES (?, ?)", (entry_id, blob)
+            )
+            self._conn.commit()
+        return self.get_entry(entry_id)  # type: ignore[return-value]
+
+    def secret_blob(self, entry_id: int) -> str | None:
+        """The encrypted value for a secret note, or None if it isn't one."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT blob FROM secrets WHERE entry_id = ?", (entry_id,)
+            ).fetchone()
+        return row["blob"] if row else None
+
+    def update_secret_blob(self, entry_id: int, blob: str) -> bool:
+        """Replace the encrypted value of an existing secret. False if it isn't one."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE secrets SET blob = ? WHERE entry_id = ?", (blob, entry_id)
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def set_entry_dates(self, entry_id: int, dates: list[str]) -> None:
         """Replace the frozen date references for an entry (idempotent on re-save)."""
         with self._lock:
@@ -423,6 +462,7 @@ class Database:
         with self._lock:
             self._conn.execute("DELETE FROM vec_chunks")
             self._conn.execute("DELETE FROM entry_dates")
+            self._conn.execute("DELETE FROM secrets")
             self._conn.execute("DELETE FROM chunks")
             self._conn.execute("DELETE FROM entries")
             self._conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('entries','chunks')")

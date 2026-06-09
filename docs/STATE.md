@@ -5,7 +5,7 @@ _A living snapshot of where Blurt is. Update it as things change._
 ## Where it is
 
 Blurt is **shipped: public, open source (MIT) at
-[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.1.2.** Install is
+[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.3.0.** Install is
 `pipx install git+https://github.com/rbsriram/blurt` then `blurt` (see the README);
 a `blurt/cli.py` launcher checks Ollama, starts the server, and opens Blurt in its
 own native desktop window (`blurt/desktop.py`, via pywebview; `BLURT_BROWSER=1`
@@ -36,6 +36,12 @@ tested, and linted.
   can search by date ("tomorrow", "next week", "2nd feb") and a Settings toggle picks
   day-first vs month-first for ambiguous numeric dates. It is a search enhancer only,
   never a task/calendar app. See DECISIONS #54.
+- **Encrypted secrets:** jot a credential with `⌘K` / `/secret`; the value is encrypted
+  at rest (Fernet, key in the OS keychain), masked, copyable, and kept out of the
+  mirror and the search index. Click to edit, empty + Enter to delete. A safer place
+  to jot a credential, not a password manager. See DECISIONS #55 and `docs/SECURITY.md`.
+- **Editing/deleting:** any note deletes the text-pad way (open, clear, Enter); the
+  per-note `×` is gone. `Esc` returns focus to the input box from anywhere.
 - **Smart-search engine state:** the pad is gated on first launch until Ollama + the
   embedding model are ready (so notes are never saved unindexable); after that an Ollama
   drop is non-blocking (capture + exact search continue, the peek resumes on recovery).

@@ -73,10 +73,9 @@ body {
   transition: background var(--reveal);
 }
 .entry:hover { background: var(--highlight); }
-/* While one note is being edited, don't let hovering the others highlight them or
-   reveal their delete affordance — the edit box is the only thing that should stand out. */
+/* While one note is being edited, don't let hovering the others highlight them —
+   the edit box is the only thing that should stand out. */
 #stream.editing .entry:hover { background: transparent; }
-#stream.editing .entry-action { opacity: 0; }
 .entry-body { word-break: break-word; cursor: text; line-height: 1.45; }
 .entry-body > *:first-child { margin-top: 0; }
 .entry-body > *:last-child { margin-bottom: 0; }
@@ -150,20 +149,6 @@ body {
   100% { background: transparent; }
 }
 
-.entry-action {
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0;
-  transition: opacity var(--reveal), color var(--reveal);
-}
-.entry:hover .entry-action { opacity: 0.6; }
-.entry-action:hover { color: var(--accent); }
 
 .entry-edit {
   width: 100%;
@@ -260,6 +245,7 @@ body {
 }
 @keyframes peekfade { from { opacity: 0; transform: translateY(2px); } }
 .peek-line .peek-time { color: var(--accent); opacity: 0.7; margin-right: 6px; }
+.peek-secret { display: inline-flex; align-items: baseline; gap: 10px; vertical-align: middle; }
 .peek-line mark { background: none; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 .peek-line.focused {
@@ -286,11 +272,8 @@ body {
   min-width: 260px;
   max-height: 300px;
   overflow-y: auto;
-  background: var(--panel);
-  border: 1px solid var(--faint);
-  border-radius: 10px;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.26);
-  padding: 6px;
+  background: var(--bg);   /* same tone as the pad: flat, no panel colour, no border/radius/shadow */
+  padding: 4px 0;
   z-index: 20;
   animation: peekfade 120ms ease both;
 }
@@ -300,15 +283,17 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 24px;
-  padding: 7px 12px;
-  border-radius: 6px;
+  padding: 6px 12px;
   cursor: pointer;
 }
 .slash-item.focused { background: var(--highlight); }
 .slash-item .slash-label { color: var(--fg); }
 .slash-item .slash-syntax { color: var(--muted); font-size: 12px; }
+#compose-row { display: flex; align-items: flex-end; gap: 6px; }
+#compose-row[hidden] { display: none; }   /* the id rule above beats the default [hidden]; restore it */
 #compose {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   resize: none;
@@ -330,6 +315,57 @@ body {
 }
 #inputhint .undo-link { color: var(--accent); cursor: pointer; }
 #inputhint .undo-link:hover { text-decoration: underline; }
+
+/* the key │ secret editing row, used by both the bottom create form and the inline
+   note editor. Flat plain-text inputs in the pad's own style: no box, no rounded
+   borders, no accent. The bottom form REPLACES the compose box while open. */
+.secret-fields { display: flex; align-items: stretch; gap: 12px; padding: 4px 0; }
+#secret-form[hidden] { display: none; }
+.secret-fields input {
+  -webkit-appearance: none;   /* kill WKWebView's native field border/underline */
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 0;
+  outline: none;
+}
+.secret-fields input::placeholder { color: var(--muted); }
+/* one line: key │ secret(dots)  show, with a subtle vertical divider */
+.sec-key { flex: 0 0 7em; min-width: 0; }
+.sec-val { flex: 0 1 26em; min-width: 0; align-self: center; }
+/* a thin, subtle vertical rule between two fields/segments on one line */
+.sec-div { flex: none; width: 1px; align-self: stretch; background: var(--fg); opacity: 0.16; }
+/* Mask the value via CSS (not a password field) so macOS/iCloud autofill stays away. */
+.sec-val { -webkit-text-security: disc; text-security: disc; }
+.sec-val.revealed { -webkit-text-security: none; text-security: none; }
+
+/* a saved secret note, one line: label │ masked value | show, divider between */
+.secret-note { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; }
+.secret-label { align-self: center; overflow-wrap: anywhere; }
+/* masked secret control inside a note: click the value to copy, "show" to reveal */
+.secret { display: flex; align-items: center; gap: 10px; }
+.secret-mask {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--faint);
+  border-radius: 5px;
+  padding: 2px 8px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.secret-mask:hover { background: var(--highlight); }
+.secret-toggle {
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+.secret-toggle:hover { opacity: 1; color: var(--accent); }
 
 /* --- smart-search banner: a floating pill below the title bar, only while Ollama is
    unreachable. A soft accent glow and a slow pulsing dot make it catch the eye without
