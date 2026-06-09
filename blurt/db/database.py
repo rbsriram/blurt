@@ -325,18 +325,24 @@ class Database:
             )
             self._conn.commit()
 
+    # Bump when the date parser changes so existing notes get re-frozen with the
+    # newer logic on next launch (a no-op once they're already at this version).
+    _DATES_PARSER_VERSION = "2"
+
     def backfill_dates(self, resolve) -> int:
-        """One-time: freeze date references for notes written before this feature.
+        """Freeze date references for all notes, re-running when the parser changes.
 
         Each note is anchored to its OWN creation date, so a relative phrase resolves
         to what it meant when written, not to today. ``resolve(content, day)`` is the
         date resolver, injected so the storage layer stays unaware of how parsing
-        works. Idempotent via a meta flag; returns the number of notes processed.
+        works. Skipped entirely once notes are already at the current parser version;
+        returns the number of notes processed.
         """
         with self._lock:
-            if self._conn.execute(
-                "SELECT 1 FROM meta WHERE key = 'dates_backfilled'"
-            ).fetchone():
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = 'dates_parser_version'"
+            ).fetchone()
+            if row is not None and row["value"] == self._DATES_PARSER_VERSION:
                 return 0
             rows = self._conn.execute(
                 "SELECT id, content, created_at FROM entries WHERE is_superseded = 0"
@@ -344,12 +350,11 @@ class Database:
         from datetime import date
         for r in rows:
             day = date.fromisoformat(r["created_at"][:10])
-            dates = resolve(r["content"], day)
-            if dates:
-                self.set_entry_dates(r["id"], dates)
+            self.set_entry_dates(r["id"], resolve(r["content"], day))
         with self._lock:
             self._conn.execute(
-                "INSERT OR REPLACE INTO meta(key, value) VALUES ('dates_backfilled', '1')"
+                "INSERT OR REPLACE INTO meta(key, value) VALUES ('dates_parser_version', ?)",
+                (self._DATES_PARSER_VERSION,),
             )
             self._conn.commit()
         return len(rows)
