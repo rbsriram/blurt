@@ -1089,13 +1089,18 @@ function keyListHtml() {
     [`shift+enter`, "new line"],
     [`/`, "formatting menu (at line start)"],
     [`${MOD}+k`, "store a secret (encrypted)"],
-    [`${MOD}+↑`, "browse matches in the peek"],
-    [`↑ / ↓`, "move through the peek"],
-    [`enter`, "edit the focused match"],
+    [`${MOD}+f`, "search"],
+    [`esc`, "back to typing (closes anything open)"],
+    // a note in the stream
+    [`click a note`, "edit it in place"],
+    [`clear it + enter`, "delete it"],
+    [`${MOD}+z`, "undo the last save / delete"],
+    // browsing the peek (the as-you-type matches)
+    [`${MOD}+↑`, "browse the peek"],
+    [`↑ / ↓`, "move through / leave the peek"],
+    [`enter`, "open the focused match"],
     [`${MOD}+delete`, "delete the focused match"],
     [`${MOD}+c`, "copy the focused match"],
-    [`esc`, "close the peek"],
-    [`${MOD}+f`, "search"],
     [`ctrl+shift+d`, "dark / light"],
     [`?`, "this cheatsheet"],
   ];
