@@ -265,6 +265,18 @@ def test_set_entry_dates_replaces(db):
     assert db.get_entry(e["id"])["dates"] == ["2026-06-20"]
 
 
+def test_backfill_anchors_to_each_notes_creation_date(db):
+    # A pre-existing note's "tomorrow" must resolve against when it was WRITTEN,
+    # not against today, and the pass must be one-shot (idempotent).
+    e = db.add_entry("call David tomorrow")
+    db._conn.execute("UPDATE entries SET created_at = ? WHERE id = ?", ("2026-01-01T08:00:00.000Z", e["id"]))
+    db._conn.commit()
+    processed = db.backfill_dates(anchor_dates)
+    assert processed == 1
+    assert db.get_entry(e["id"])["dates"] == ["2026-01-02"]   # day after creation, not today
+    assert db.backfill_dates(anchor_dates) == 0               # flag set: never runs twice
+
+
 def test_set_content_in_place_keeps_id_and_vectors(db):
     e = db.add_entry("- [ ] task")
     db.add_chunks(e["id"], [(0, "- [ ] task", vec(1.0))])

@@ -325,6 +325,35 @@ class Database:
             )
             self._conn.commit()
 
+    def backfill_dates(self, resolve) -> int:
+        """One-time: freeze date references for notes written before this feature.
+
+        Each note is anchored to its OWN creation date, so a relative phrase resolves
+        to what it meant when written, not to today. ``resolve(content, day)`` is the
+        date resolver, injected so the storage layer stays unaware of how parsing
+        works. Idempotent via a meta flag; returns the number of notes processed.
+        """
+        with self._lock:
+            if self._conn.execute(
+                "SELECT 1 FROM meta WHERE key = 'dates_backfilled'"
+            ).fetchone():
+                return 0
+            rows = self._conn.execute(
+                "SELECT id, content, created_at FROM entries WHERE is_superseded = 0"
+            ).fetchall()
+        from datetime import date
+        for r in rows:
+            day = date.fromisoformat(r["created_at"][:10])
+            dates = resolve(r["content"], day)
+            if dates:
+                self.set_entry_dates(r["id"], dates)
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES ('dates_backfilled', '1')"
+            )
+            self._conn.commit()
+        return len(rows)
+
     def knn(self, query_vec: list[float], k: int) -> list[tuple[int, float]]:
         """Return (chunk_id, similarity) for the k nearest active chunks."""
         q = serialize_f32(query_vec)
