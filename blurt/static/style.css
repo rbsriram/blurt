@@ -352,18 +352,9 @@ body {
 #add-secret[hidden] { display: none; }
 #add-secret:hover { opacity: 1; color: var(--accent); }
 
-/* the add-secret form: flat plain-text inputs in the pad's own style, sitting just
-   above the input bar. No box, no rounded borders, no accent — just like typing. */
-#secret-form {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 6px);
-  background: var(--bg);
-  border-top: 1px solid var(--faint);
-  border-bottom: 1px solid var(--faint);
-  z-index: 20;
-}
+/* the add-secret form: flat plain-text inputs in the pad's own style. It sits
+   in-flow and REPLACES the compose box while open (app.js hides #compose-row), so
+   it reads as the input, not a floating panel. No box, no rounded borders, no accent. */
 #secret-form[hidden] { display: none; }
 #secret-form input {
   width: 100%;
@@ -373,13 +364,13 @@ body {
   font: inherit;
   font-size: 15px;
   line-height: 1.6;
-  padding: 6px 0;
+  padding: 4px 0;
   outline: none;
 }
 #secret-form input::placeholder { color: var(--muted); }
-/* value row: the password field + a show/hide toggle, separated from the label above */
-#sec-value-row { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--faint); }
-#sec-value-row #sec-value { flex: 1; min-width: 0; }
+/* value row: the password field + a show/hide toggle kept right next to the text */
+#sec-value-row { display: flex; align-items: baseline; gap: 10px; border-top: 1px solid var(--faint); }
+#sec-value-row #sec-value { flex: 0 1 26em; width: auto; min-width: 0; }
 
 /* masked secret control inside a note: click the value to copy, "show" to reveal */
 .secret { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
@@ -396,9 +387,9 @@ body {
 .secret-mask:hover { background: var(--highlight); }
 .secret-toggle {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0.5;
 }
 .secret-toggle:hover { opacity: 1; color: var(--accent); }
 
