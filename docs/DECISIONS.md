@@ -826,3 +826,26 @@ broken `↑` afterward. New model:
 - **UI:** a deliberately subtle muted date label on the left of each note footer (owner steered it
   from an accent pill with a calendar icon down to barely-there text), kept clear of the saved-time
   on the right so the two never read as a confusing pair. Clicking it searches that exact day.
+
+### 55. Encrypted secrets, keyboard-first delete, flat UI (owner)
+- Owner jots credentials into the pad, so make that safe. Framed as "a safer place to jot a
+  credential than a plaintext note," NOT a password manager (see docs/SECURITY.md threat model).
+- **Crypto:** the secret VALUE is encrypted with Fernet (AES-128-CBC + HMAC); the key lives in the
+  OS keychain via `keyring` (no master password, to keep it frictionless). The note's `content` is
+  only the label, so the value never touches the `scratchpad.md` mirror or the embedding index, and
+  the "content is verbatim" invariant holds. Value lives in a separate `secrets` table; reads attach
+  an `is_secret` flag. The key is per-machine by design.
+- **No `type=password`:** a real password field makes macOS iCloud Passwords pop autofill UI that
+  Apple won't suppress via attributes. We mask a plain text field with CSS (`-webkit-text-security`)
+  instead, plus `-webkit-appearance:none` to kill WKWebView's native field underline.
+- **Lifecycle, all keyboard:** add via `Cmd/Ctrl+K` or `/secret` (one-line `key │ secret` form that
+  replaces the compose box); click a saved secret to edit it in place (re-encrypts via
+  `PATCH /api/secrets/{id}`); empty it + Enter to delete; click the dots to copy (clipboard
+  auto-clears ~20s, best effort), "show" to reveal. Shown masked in the stream, search, and the peek.
+- **Two general UX changes rode along (kept, they're improvements):** (1) a note is deleted by
+  emptying it and pressing Enter, like a text pad, so the per-note `×` button was removed; (2) Esc is
+  now "back to typing" from anywhere. Owner's standing direction throughout: keyboard-first with click
+  as the secondary path, bare UI with no disclaimers/footnotes/panels (flat slash menu, flat secret
+  form, no accent borders), and in-app help kept current with features so he isn't the QA.
+- Shipped in v1.3.0. The "update now" in-app updater is parked as the next experiment (the current
+  "check for updates" copies the `pipx upgrade` command).

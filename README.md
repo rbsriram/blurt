@@ -49,6 +49,13 @@ top of it, I would genuinely love to know.
   in sync next to your data at all times.
 - **Keyboard first.** A `/` menu for formatting (to-do, headings, code, all of
   it), lists that continue themselves, URLs that auto-link. No toolbars.
+- **Dates that just work.** Write "meeting David tomorrow" or "deadline 14 Jun"
+  and Blurt quietly tags the real date. Search "tomorrow" or "next week" to pull
+  those notes up. A day/month vs month/day toggle handles "6/4" your way.
+- **Secrets, not plaintext.** Stash a password, key, or PIN with `Cmd/Ctrl+K`.
+  It is encrypted on your machine (the key lives in your OS keychain), shown as
+  dots, copyable in a click, and kept out of both the search index and the plain
+  `scratchpad.md`. A safer place to jot a credential, not a password manager.
 
 ## What it needs
 
@@ -114,10 +121,14 @@ Your notes live in `~/.local/share/blurt/` (a SQLite file and a plain
 | `Enter` | save the note |
 | `Shift+Enter` | new line (and continues a list) |
 | `/` | formatting menu, at the start of a line |
+| `Cmd/Ctrl+K` | store a secret (encrypted) |
 | `Up` | peek at matching notes, then edit one in place |
 | `Cmd/Ctrl+F` | search |
 | `Cmd/Ctrl+Z` | undo the last thing |
+| `Esc` | back to typing (closes whatever is open) |
 | `?` | the full cheatsheet |
+
+Delete a note the text-pad way: open it, clear it, press `Enter`.
 
 ## Under the hood (for the curious)
 
