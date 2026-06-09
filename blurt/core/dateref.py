@@ -119,6 +119,34 @@ def _h_month(m, t):
     return (anchor, anchor.replace(day=_days_in_month(anchor.year, anchor.month)))
 
 
+def _h_nth_of_month(m, t):
+    """'14th of this month' / 'the 2nd of next month' -> that exact day."""
+    shift = {"this": 0, "next": 1, "last": -1}[m.group("q").lower()]
+    first = _add_months(t.replace(day=1), shift)
+    day = int(m.group("d"))
+    if not 1 <= day <= _days_in_month(first.year, first.month):
+        return None
+    d = first.replace(day=day)
+    return (d, d)
+
+
+def _h_numeric_dmy(m, t):
+    """Slash/dash date with a full year: 14/2/2024, 14-12-2026.
+
+    Day-first (the international norm), falling back to month-first only if that's
+    impossible (e.g. 2/14/2024). Requiring a 4-digit year keeps fractions and refs
+    like '3/4' or '1/6' from being mistaken for dates.
+    """
+    a, b, year = int(m.group("a")), int(m.group("b")), int(m.group("y"))
+    for day, month in ((a, b), (b, a)):
+        try:
+            d = date(year, month, day)
+        except ValueError:
+            continue
+        return (d, d)
+    return None
+
+
 _UNIT_DAYS = {"day": 1, "week": 7}
 
 
@@ -176,9 +204,11 @@ def _h_day_month(m, t):
 _PATTERNS: list[tuple[re.Pattern, object]] = [
     (re.compile(r"\b(?:the\s+)?day\s+after\s+tomorrow\b", re.I), _h_day_after),
     (re.compile(r"\b(?:the\s+)?day\s+before\s+yesterday\b", re.I), _h_day_before),
+    (re.compile(r"\b(?:the\s+)?(?P<d>\d{1,2})(?:st|nd|rd|th)?\s+of\s+(?P<q>this|next|last)\s+month\b", re.I), _h_nth_of_month),
     (re.compile(r"\b(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})\b"), _h_iso),
+    (re.compile(r"\b(?P<a>\d{1,2})[/-](?P<b>\d{1,2})[/-](?P<y>\d{4})\b"), _h_numeric_dmy),
     (re.compile(rf"\b(?P<mo>{_MO})\.?\s+(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_month_day),
-    (re.compile(rf"\b(?P<d>\d{{1,2}})(?:st|nd|rd|th)?\s+(?P<mo>{_MO})\.?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_day_month),
+    (re.compile(rf"\b(?P<d>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?(?P<mo>{_MO})\.?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_day_month),
     (re.compile(r"\bin\s+(?P<n>\d{1,3})\s+(?P<unit>days?|weeks?|months?)\b", re.I), _h_in),
     (re.compile(r"\b(?P<n>\d{1,3})\s+(?P<unit>days?|weeks?|months?)\s+ago\b", re.I), _h_ago),
     (re.compile(r"\b(?:(?P<q>this|next|last)\s+)?(?P<wd>" + _WD + r")\b", re.I), _h_weekday),
@@ -217,13 +247,15 @@ def _find_ranges(text: str, today: date) -> list[tuple[date, date]]:
 
 
 def anchor_dates(text: str, today: date) -> list[str]:
-    """Absolute dates a note refers to, as sorted unique ISO strings.
+    """Absolute single days a note refers to, as sorted unique ISO strings.
 
-    Anchors on the START of each range, so "lunch next week" (a Mon..Sun range)
-    is stored as that Monday and is still found by a "next week" search.
+    Only genuine point references stamp a note ("tomorrow", "Jun 15", "14th of
+    this month"). Vague spans ("this month", "next week") are deliberately NOT
+    anchored: pinning them to a single day (the 1st, the Monday) would show a
+    misleading chip. They still widen a *search* via query_ranges below.
     """
-    starts = {start.isoformat() for start, _ in _find_ranges(text, today)}
-    return sorted(starts)
+    days = {s.isoformat() for s, e in _find_ranges(text, today) if s == e}
+    return sorted(days)
 
 
 def query_ranges(text: str, today: date) -> list[tuple[str, str]]:
