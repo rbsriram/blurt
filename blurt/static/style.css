@@ -353,6 +353,9 @@ body {
 /* value row: the password field + a show/hide toggle kept right next to the text */
 #sec-value-row { display: flex; align-items: baseline; gap: 10px; border-top: 1px solid var(--faint); }
 #sec-value-row #sec-value { flex: 0 1 26em; width: auto; min-width: 0; }
+/* Mask the value via CSS (not a password field) so macOS/iCloud autofill stays away. */
+#sec-value { -webkit-text-security: disc; text-security: disc; }
+#sec-value.revealed { -webkit-text-security: none; text-security: none; }
 
 /* masked secret control inside a note: click the value to copy, "show" to reveal */
 .secret { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
