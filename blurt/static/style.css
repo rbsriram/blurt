@@ -272,11 +272,8 @@ body {
   min-width: 260px;
   max-height: 300px;
   overflow-y: auto;
-  background: var(--panel);
-  border: 1px solid var(--faint);
-  border-radius: 10px;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.26);
-  padding: 6px;
+  background: var(--panel);   /* flat: a subtle tone shift for readability, no border/radius/shadow */
+  padding: 4px 0;
   z-index: 20;
   animation: peekfade 120ms ease both;
 }
@@ -286,8 +283,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 24px;
-  padding: 7px 12px;
-  border-radius: 6px;
+  padding: 6px 12px;
   cursor: pointer;
 }
 .slash-item.focused { background: var(--highlight); }
