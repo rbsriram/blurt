@@ -162,21 +162,15 @@ function fmtDate(iso) {
   return when.toLocaleDateString(undefined, opts).toLowerCase();
 }
 
-// A small calendar glyph, so the chip reads as "a date this note is about" and
-// never as a second timestamp. Monochrome; inherits the chip's colour.
-const CAL_SVG = '<svg class="chip-ico" viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">'
-  + '<rect x="2.2" y="3.2" width="11.6" height="10.6" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/>'
-  + '<path d="M2.2 6.4h11.6M5.2 1.8v2.6M10.8 1.8v2.6" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
-
-// A chip showing the soonest date a note names ("+N" if it names more), tagged
-// with a calendar icon. Clicking it finds every note on that day. Returns null
-// when the note has no dates, so callers can append unconditionally.
+// A faint label showing the soonest date a note names ("+N" if it names more).
+// Kept barely-there (muted, no pill) so it doesn't compete with the note; it
+// brightens on hover to signal it's clickable, and clicking finds that day.
+// Returns null when the note has no dates, so callers can append unconditionally.
 function dateChip(dates) {
   if (!dates || !dates.length) return null;
   const chip = document.createElement("span");
   chip.className = "date-chip";
-  chip.innerHTML = CAL_SVG;   // icon only; the label is a text node so it stays escaped
-  chip.appendChild(document.createTextNode(fmtDate(dates[0]) + (dates.length > 1 ? ` +${dates.length - 1}` : "")));
+  chip.textContent = fmtDate(dates[0]) + (dates.length > 1 ? ` +${dates.length - 1}` : "");
   chip.title = dates.map(fmtDate).join(", ") + " · click to find this day";
   chip.addEventListener("click", (ev) => { ev.stopPropagation(); searchByDate(dates[0]); });
   return chip;
