@@ -245,6 +245,7 @@ body {
 }
 @keyframes peekfade { from { opacity: 0; transform: translateY(2px); } }
 .peek-line .peek-time { color: var(--accent); opacity: 0.7; margin-right: 6px; }
+.peek-secret { display: inline-flex; align-items: baseline; gap: 10px; vertical-align: middle; }
 .peek-line mark { background: none; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 .peek-line.focused {
