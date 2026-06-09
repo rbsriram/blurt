@@ -19,6 +19,12 @@ import uvicorn
 _MIN_W, _MIN_H = 480, 560
 
 
+def _app_title() -> str:
+    """The window/menu name. Defaults to "blurt"; a dev build sets BLURT_WINDOW_TITLE
+    (e.g. "blurt dev") so it reads as a distinct app next to the real one."""
+    return os.environ.get("BLURT_WINDOW_TITLE", "blurt")
+
+
 def serve_in_background(app, host: str, port: int) -> uvicorn.Server:
     """Start the server in a daemon thread and return the running Server.
 
@@ -45,7 +51,7 @@ def open_window(url: str, on_closed=None) -> None:
     geom = _load_geometry()
     api = _JsApi()
     window = webview.create_window(
-        "blurt",
+        _app_title(),
         url,
         width=geom["width"],
         height=geom["height"],
@@ -246,7 +252,7 @@ def _build_menu_bar(window) -> None:
                     # "Version" is the parenthetical build number; blank it so the panel
                     # shows just "Version 1.1.0", not the host Python's build.
                     opts = {
-                        "ApplicationName": "blurt",
+                        "ApplicationName": _app_title(),
                         "ApplicationVersion": __version__,
                         "Version": "",
                     }
@@ -470,7 +476,7 @@ def _brand_macos_app() -> None:
         bundle = NSBundle.mainBundle()
         info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
         if info is not None:
-            info["CFBundleName"] = "blurt"
+            info["CFBundleName"] = _app_title()
             info["CFBundleShortVersionString"] = __version__
             info["CFBundleVersion"] = __version__
             info["NSHumanReadableCopyright"] = "just type. it remembers."
