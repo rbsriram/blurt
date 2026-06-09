@@ -31,6 +31,11 @@ tested, and linted.
 - **Front end:** bottom-pinned capture, the keyboard-browsable peek, in-place note
   editing, arrow-navigable search, checklists, list auto-continuation, a `/`
   formatting menu, auto-linked URLs, Markdown export, and a `?` cheatsheet.
+- **Date-aware notes:** date phrases ("tomorrow", "next friday", "Jun 1", "14/2/2024")
+  are frozen to absolute days at capture and shown as a subtle, clickable label; you
+  can search by date ("tomorrow", "next week", "2nd feb") and a Settings toggle picks
+  day-first vs month-first for ambiguous numeric dates. It is a search enhancer only,
+  never a task/calendar app. See DECISIONS #54.
 - **Smart-search engine state:** the pad is gated on first launch until Ollama + the
   embedding model are ready (so notes are never saved unindexable); after that an Ollama
   drop is non-blocking (capture + exact search continue, the peek resumes on recovery).
