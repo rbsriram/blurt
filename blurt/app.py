@@ -31,7 +31,9 @@ async def lifespan(app: FastAPI):
     db = Database(settings.db_path, settings.embed_dim)
     # One-time: light up date chips/search on notes written before this feature.
     # Anchored to each note's creation date, so old "tomorrow"s resolve correctly.
-    backfilled = db.backfill_dates(anchor_dates)
+    backfilled = db.backfill_dates(
+        lambda text, day: anchor_dates(text, day, settings.date_order)
+    )
     if backfilled:
         log.info("Froze date references for %d existing notes", backfilled)
     embedder = OllamaEmbedder(

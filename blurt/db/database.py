@@ -329,14 +329,30 @@ class Database:
     # newer logic on next launch (a no-op once they're already at this version).
     _DATES_PARSER_VERSION = "2"
 
-    def backfill_dates(self, resolve) -> int:
-        """Freeze date references for all notes, re-running when the parser changes.
+    def reparse_dates(self, resolve) -> int:
+        """Re-freeze every active note's dates with ``resolve(content, day)``.
 
         Each note is anchored to its OWN creation date, so a relative phrase resolves
-        to what it meant when written, not to today. ``resolve(content, day)`` is the
-        date resolver, injected so the storage layer stays unaware of how parsing
-        works. Skipped entirely once notes are already at the current parser version;
-        returns the number of notes processed.
+        to what it meant when written, not to today. ``resolve`` is injected so the
+        storage layer stays unaware of how parsing works. Used both by the startup
+        backfill and when the date-format setting changes. Returns notes processed.
+        """
+        from datetime import date
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, content, created_at FROM entries WHERE is_superseded = 0"
+            ).fetchall()
+        for r in rows:
+            day = date.fromisoformat(r["created_at"][:10])
+            self.set_entry_dates(r["id"], resolve(r["content"], day))
+        return len(rows)
+
+    def backfill_dates(self, resolve) -> int:
+        """One-time per parser version: freeze dates for notes that predate it.
+
+        Skipped entirely once notes are already at the current version, so it costs
+        nothing on a normal launch. Bumping ``_DATES_PARSER_VERSION`` re-freezes all
+        notes once with the newer logic.
         """
         with self._lock:
             row = self._conn.execute(
@@ -344,20 +360,14 @@ class Database:
             ).fetchone()
             if row is not None and row["value"] == self._DATES_PARSER_VERSION:
                 return 0
-            rows = self._conn.execute(
-                "SELECT id, content, created_at FROM entries WHERE is_superseded = 0"
-            ).fetchall()
-        from datetime import date
-        for r in rows:
-            day = date.fromisoformat(r["created_at"][:10])
-            self.set_entry_dates(r["id"], resolve(r["content"], day))
+        count = self.reparse_dates(resolve)
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO meta(key, value) VALUES ('dates_parser_version', ?)",
                 (self._DATES_PARSER_VERSION,),
             )
             self._conn.commit()
-        return len(rows)
+        return count
 
     def knn(self, query_vec: list[float], k: int) -> list[tuple[int, float]]:
         """Return (chunk_id, similarity) for the k nearest active chunks."""

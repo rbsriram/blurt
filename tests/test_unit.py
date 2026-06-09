@@ -226,6 +226,19 @@ def test_vague_spans_do_not_anchor_a_note(text):
     assert anchor_dates(text, TODAY) == []
 
 
+def test_numeric_date_disambiguates_when_it_can():
+    # 14 can't be a month, so it's the day regardless of the chosen order.
+    assert anchor_dates("14-12-2026", TODAY) == ["2026-12-14"]
+    assert anchor_dates("14-12-2026", TODAY, "MDY") == ["2026-12-14"]
+    assert anchor_dates("12-12-26", TODAY) == ["2026-12-12"]      # 2-digit year
+
+
+def test_ambiguous_numeric_date_follows_chosen_order():
+    # 6/4: only the format preference can decide. Day-first vs month-first.
+    assert anchor_dates("6/4/2026", TODAY, "DMY") == ["2026-04-06"]
+    assert anchor_dates("6/4/2026", TODAY, "MDY") == ["2026-06-04"]
+
+
 @pytest.mark.parametrize("text", [
     "meeting David at five",        # bare number is not a date (precision over recall)
     "we may go there",              # bare month word without a day number

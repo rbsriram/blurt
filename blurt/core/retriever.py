@@ -91,7 +91,7 @@ class Retriever:
         # whose frozen date lands in that range. Like lexical, this is exact and
         # embedding-independent, so it works the instant a note is saved and even
         # when Ollama is down. Resolved against the local "today".
-        ranges = query_ranges(q, date.today())
+        ranges = query_ranges(q, date.today(), self._s.date_order)
         date_hits = (
             await asyncio.to_thread(self._db.entries_in_ranges, ranges, cap) if ranges else []
         )

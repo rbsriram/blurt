@@ -13,12 +13,13 @@ from datetime import date
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
-from ..config import set_notes_dir, settings
+from ..config import set_date_order, set_notes_dir, settings
 from ..core import active_stream_markdown, render_stream_markdown
 from ..core.checklist import set_checkbox
 from ..core.dateref import anchor_dates
 from .schemas import (
     CheckboxToggle,
+    DateFormatRequest,
     EntryCreate,
     EntryUpdate,
     NotesDirRequest,
@@ -85,7 +86,7 @@ async def create_entry(body: EntryCreate, request: Request):
     # Freeze any date references now, against today's local date, so "tomorrow"
     # means the day it was written, not the day it's later read. Pure + fast, so
     # it runs inline (no Ollama, unlike embedding) and is searchable immediately.
-    db.set_entry_dates(entry["id"], anchor_dates(body.content, date.today()))
+    db.set_entry_dates(entry["id"], anchor_dates(body.content, date.today(), settings.date_order))
     _indexer(request).enqueue(entry["id"])
     _touch_mirror(request)
     return db.get_entry(entry["id"])
@@ -128,7 +129,7 @@ async def edit_entry(entry_id: int, body: EntryUpdate, request: Request):
         raise HTTPException(status_code=409, detail="cannot edit a superseded entry")
     db.clear_chunks(entry_id)
     # Re-freeze dates against today: the edited text may add or drop references.
-    db.set_entry_dates(entry_id, anchor_dates(body.content, date.today()))
+    db.set_entry_dates(entry_id, anchor_dates(body.content, date.today(), settings.date_order))
     _indexer(request).enqueue(entry_id)
     _touch_mirror(request)
     return db.get_entry(entry_id)
@@ -235,8 +236,23 @@ async def get_settings(request: Request):
     return {
         "notes_dir": str(settings.notes_dir),
         "scratchpad_path": str(settings.export_md_path),
+        "date_order": settings.date_order,
         "version": request.app.state.version,
     }
+
+
+@router.post("/date-format")
+async def change_date_format(body: DateFormatRequest, request: Request):
+    """Set how ambiguous numeric dates (6/4) are read, then re-freeze existing notes
+    so the change is visible immediately rather than only on notes saved afterwards."""
+    try:
+        order = set_date_order(settings.db_path, body.order)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    db = _db(request)
+    db.reparse_dates(lambda text, day: anchor_dates(text, day, order))
+    _touch_mirror(request)
+    return {"date_order": order}
 
 
 @router.post("/notes-dir")
