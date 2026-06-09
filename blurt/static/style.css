@@ -141,9 +141,11 @@ body {
   padding: 0 5px;
   opacity: 0.5;
   white-space: nowrap;
+  cursor: pointer;
   transition: opacity var(--reveal);
 }
 .entry:hover .date-chip { opacity: 0.85; }
+.date-chip:hover { opacity: 1; text-decoration: underline; }
 .result-date { margin-left: 6px; opacity: 0.8; }
 
 .entry.focus-flash { animation: flash 1.2s ease; }

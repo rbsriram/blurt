@@ -163,14 +163,25 @@ function fmtDate(iso) {
 }
 
 // A faint chip showing the soonest date a note names ("+N" if it names more).
-// Returns null when the note has no dates, so callers can append unconditionally.
+// Clicking it finds every note on that day. Returns null when the note has no
+// dates, so callers can append unconditionally.
 function dateChip(dates) {
   if (!dates || !dates.length) return null;
   const chip = document.createElement("span");
   chip.className = "date-chip";
   chip.textContent = fmtDate(dates[0]) + (dates.length > 1 ? ` +${dates.length - 1}` : "");
-  chip.title = dates.map(fmtDate).join(", ");
+  chip.title = dates.map(fmtDate).join(", ") + " · click to find this day";
+  chip.addEventListener("click", (ev) => { ev.stopPropagation(); searchByDate(dates[0]); });
   return chip;
+}
+
+// Run search for an exact day. The query is the ISO date itself, which the date
+// parser reads as that single day, so this hits notes frozen to it regardless of
+// the format they were written in. Searching the soonest date when a note has more.
+function searchByDate(iso) {
+  openSearch();
+  el.searchInput.value = iso;
+  runSearch();
 }
 
 // ---------------------------------------------------------------- search-term highlight (safe: text nodes only)
