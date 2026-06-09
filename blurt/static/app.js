@@ -1512,14 +1512,16 @@ window.addEventListener("keydown", (ev) => {
     return;
   }
   if (ev.key === "Escape") {
-    // Esc closes search no matter where focus is (not just when the search input
-    // holds it) — every action is a keystroke away.
+    // Esc is "get me back to typing": close whatever's open, no matter where focus
+    // is, and if nothing's open just return focus to the input box.
     if (!el.searchOverlay.hidden) { ev.preventDefault(); closeSearch(); return; }
     if (!el.secretForm.hidden) { ev.preventDefault(); closeSecretForm(); return; }
-    if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); return; }
-    if (dismissWelcome()) { ev.preventDefault(); return; }
-    if (!el.cheatsheet.hidden) { ev.preventDefault(); hideCheatsheet(); return; }
+    if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); focusComposeEnd(); return; }
+    if (dismissWelcome()) { ev.preventDefault(); focusComposeEnd(); return; }
+    if (!el.cheatsheet.hidden) { ev.preventDefault(); hideCheatsheet(); focusComposeEnd(); return; }
     if (state.cancelEdit) { ev.preventDefault(); state.cancelEdit(); return; }
+    ev.preventDefault(); focusComposeEnd();   // nothing open: just land in the input box
+    return;
   }
   // Cmd/Ctrl+, opens Settings — the standard shortcut, and the path for a plain
   // browser where there is no native menu to trigger it.
