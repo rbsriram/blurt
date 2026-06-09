@@ -694,7 +694,9 @@ function openEditor(node, e, hooks = {}) {
     }
     if (ev.key === "Enter") {
       ev.preventDefault();
-      if (!ta.value.trim()) return;
+      // Emptied an existing note, then confirmed: delete it (recoverable via the
+      // undo stub / ⌘Z). Matches outliner/notes-app muscle memory.
+      if (!ta.value.trim()) { stopEditing(); retireEntry(e.id); return; }
       const res = await api.patch(`/api/entries/${e.id}`, { content: ta.value });
       if (res.ok) {
         stopEditing();
