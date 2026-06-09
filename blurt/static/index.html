@@ -35,8 +35,17 @@
     <div id="inputbar">
       <!-- slash menu: type "/" at the start of a line to insert formatting -->
       <div id="slashmenu" hidden></div>
+      <!-- store a credential, encrypted (app.js openSecretForm); shown only when the
+           OS keychain is reachable (status.secrets_available) -->
+      <div id="secret-form" hidden></div>
       <textarea id="compose" rows="1" placeholder="just type."
                 autocomplete="off" autocapitalize="off" spellcheck="false" autofocus></textarea>
+      <button id="add-secret" hidden aria-label="store a secret (encrypted)" title="store a secret (encrypted)">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        </svg>
+      </button>
       <div id="inputhint"></div>
     </div>
   </main>

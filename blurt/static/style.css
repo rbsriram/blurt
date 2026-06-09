@@ -331,6 +331,91 @@ body {
 #inputhint .undo-link { color: var(--accent); cursor: pointer; }
 #inputhint .undo-link:hover { text-decoration: underline; }
 
+/* "store a secret": a faint icon button at the input's edge, brightens on hover */
+#add-secret {
+  position: absolute;
+  right: 0;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  opacity: 0.4;
+  cursor: pointer;
+  transition: opacity var(--reveal), color var(--reveal);
+}
+#add-secret[hidden] { display: none; }
+#add-secret:hover { opacity: 1; color: var(--accent); }
+
+/* the add-secret form: a panel above the input, like the slash menu */
+#secret-form {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  background: var(--panel);
+  border: 1px solid var(--faint);
+  border-radius: 10px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.26);
+  padding: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: peekfade 120ms ease both;
+}
+#secret-form[hidden] { display: none; }
+#secret-form input {
+  width: 100%;
+  border: 1px solid var(--faint);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 10px;
+  outline: none;
+}
+#secret-form input:focus { border-color: var(--accent); }
+#secret-form .secret-row { display: flex; align-items: center; gap: 8px; }
+#secret-form button {
+  border: 1px solid var(--faint);
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+#secret-form button.ghost { background: var(--faint); color: var(--fg); }
+.secret-disclaimer { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+/* masked secret control inside a note */
+.secret { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.secret-mask {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--faint);
+  border-radius: 5px;
+  padding: 2px 8px;
+  overflow-wrap: anywhere;
+}
+.secret-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.secret-btn:hover { opacity: 1; text-decoration: underline; }
+
 /* --- smart-search banner: a floating pill below the title bar, only while Ollama is
    unreachable. A soft accent glow and a slow pulsing dot make it catch the eye without
    shouting. "Ollama" links to the install; it clears itself once Ollama is up. --- */

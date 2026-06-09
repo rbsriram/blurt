@@ -16,6 +16,8 @@ dependencies = [
     "httpx>=0.26",
     "sqlite-vec>=0.1.6",
     "pywebview>=5",  # native desktop window (uses the OS webview, no bundled browser)
+    "cryptography>=42",  # Fernet, to encrypt jotted secrets at rest
+    "keyring>=24",       # holds the secret encryption key in the OS keychain (no master password)
 ]
 
 [project.optional-dependencies]

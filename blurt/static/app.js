@@ -229,6 +229,8 @@ const el = {
   cheatsheet: document.getElementById("cheatsheet"),
   settings: document.getElementById("settings"),
   slashmenu: document.getElementById("slashmenu"),
+  addSecret: document.getElementById("add-secret"),
+  secretForm: document.getElementById("secret-form"),
   welcome: document.getElementById("welcome"),
   splash: document.getElementById("splash"),
   erase: document.getElementById("erase"),
@@ -267,21 +269,29 @@ function entryNode(e) {
   node.dataset.id = e.id;
   const body = document.createElement("div");
   body.className = "entry-body";
-  body.innerHTML = md(e.content);
-  // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
-  // never hijack editing). Anywhere else → edit the note.
-  body.addEventListener("click", (ev) => {
-    const cb = ev.target.closest(".checkbox");
-    if (cb) { ev.stopPropagation(); toggleCheckbox(node, e, cb); return; }
-    const a = ev.target.closest("a");
-    if (a) {
-      ev.preventDefault();
-      if (ev.metaKey || ev.ctrlKey) window.open(a.href, "_blank", "noopener");
-      else openEditor(node, e);
-      return;
-    }
-    openEditor(node, e);
-  });
+  if (e.is_secret) {
+    // A secret note: the label is the visible content, the value stays masked behind
+    // reveal/copy. No inline edit (clicking only edits text, which the label-only
+    // content doesn't need here), so the body click is inert except its controls.
+    body.innerHTML = md(e.content);
+    body.appendChild(secretControl(e));
+  } else {
+    body.innerHTML = md(e.content);
+    // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
+    // never hijack editing). Anywhere else → edit the note.
+    body.addEventListener("click", (ev) => {
+      const cb = ev.target.closest(".checkbox");
+      if (cb) { ev.stopPropagation(); toggleCheckbox(node, e, cb); return; }
+      const a = ev.target.closest("a");
+      if (a) {
+        ev.preventDefault();
+        if (ev.metaKey || ev.ctrlKey) window.open(a.href, "_blank", "noopener");
+        else openEditor(node, e);
+        return;
+      }
+      openEditor(node, e);
+    });
+  }
 
   // Footer under the note: retire affordance on the left (hover-only), faint
   // timestamp pinned to the bottom-right.
@@ -333,6 +343,99 @@ function prependEntry(e) {
   if (hint) hint.remove();
   el.stream.insertBefore(entryNode(e), el.stream.firstChild);
   state.offset += 1;
+}
+
+// ---------------------------------------------------------------- secrets
+// Decrypt a secret on demand (server holds the key in the OS keychain). Returns the
+// value or null on failure. Fetched only when you reveal/copy, never sent with the list.
+async function fetchSecret(id) {
+  const res = await api.post(`/api/secrets/${id}/reveal`, {});
+  return res.ok && res.data ? res.data.value : null;
+}
+
+// The masked control under a secret note: dots + reveal (auto re-masks after 15s) +
+// copy (clipboard auto-clears after 20s, best-effort). Buttons stop propagation so
+// they never trigger the note's own click handling.
+function secretControl(e) {
+  const wrap = document.createElement("div");
+  wrap.className = "secret";
+  const mask = document.createElement("code");
+  mask.className = "secret-mask";
+  mask.textContent = "••••••••";
+  const reveal = document.createElement("button");
+  reveal.className = "secret-btn";
+  reveal.textContent = "reveal";
+  const copy = document.createElement("button");
+  copy.className = "secret-btn";
+  copy.textContent = "copy";
+  wrap.append(mask, reveal, copy);
+
+  let shown = false, hideTimer = null;
+  const hide = () => { mask.textContent = "••••••••"; reveal.textContent = "reveal"; shown = false; clearTimeout(hideTimer); };
+  reveal.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    if (shown) return hide();
+    const v = await fetchSecret(e.id);
+    if (v == null) { flashHint("couldn't unlock that secret"); return; }
+    mask.textContent = v; reveal.textContent = "hide"; shown = true;
+    hideTimer = setTimeout(hide, 15000);
+  });
+  copy.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    const v = await fetchSecret(e.id);
+    if (v == null) { flashHint("couldn't unlock that secret"); return; }
+    try {
+      await navigator.clipboard.writeText(v);
+      flashHint("secret copied — clears in 20s");
+      // Best-effort auto-clear: only wipe if the clipboard still holds our value.
+      setTimeout(async () => {
+        try { if ((await navigator.clipboard.readText()) === v) await navigator.clipboard.writeText(""); } catch { /* not focused / denied */ }
+      }, 20000);
+    } catch { flashHint("couldn't copy"); }
+  });
+  return wrap;
+}
+
+// The "store a secret" form: a label (visible, searchable) + the value (encrypted).
+function openSecretForm() {
+  if (!el.secretForm.hidden) return closeSecretForm();
+  el.secretForm.innerHTML = `
+    <input id="sec-label" placeholder="what is it? (e.g. gmail password)" autocomplete="off" spellcheck="false" />
+    <input id="sec-value" type="password" placeholder="the secret" autocomplete="off" spellcheck="false" />
+    <div class="secret-row">
+      <button id="sec-save">save encrypted</button>
+      <button id="sec-cancel" class="ghost">cancel</button>
+    </div>
+    <div class="secret-disclaimer">Encrypted on this device and kept out of search and the markdown file.
+      A safer place to jot a credential, not a password manager.</div>`;
+  el.secretForm.hidden = false;
+  const label = document.getElementById("sec-label");
+  const value = document.getElementById("sec-value");
+  document.getElementById("sec-save").onclick = saveSecret;
+  document.getElementById("sec-cancel").onclick = closeSecretForm;
+  value.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); saveSecret(); } });
+  el.secretForm.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.preventDefault(); closeSecretForm(); } });
+  label.focus();
+}
+
+function closeSecretForm() {
+  el.secretForm.hidden = true;
+  el.secretForm.innerHTML = "";
+  focusComposeEnd();
+}
+
+async function saveSecret() {
+  const label = (document.getElementById("sec-label").value || "").trim();
+  const value = document.getElementById("sec-value").value || "";
+  if (!label || !value) { flashHint("need both a label and a secret"); return; }
+  const res = await api.post("/api/secrets", { label, value });
+  if (res.ok && res.data) {
+    prependEntry(res.data);
+    closeSecretForm();
+    flashHint("secret saved, encrypted");
+  } else {
+    flashHint(res.status === 503 ? "no keychain available for secrets" : "couldn't save secret");
+  }
 }
 
 async function loadStream(reset = true) {
@@ -1174,6 +1277,8 @@ function renderEngineStatus(status) {
   lastStatus = status;
   const node = document.getElementById("set-engine");
   if (node) node.innerHTML = engineStatusHtml(status);
+  // Show the "store a secret" affordance only when there's a keychain to hold the key.
+  if (el.addSecret) el.addSecret.hidden = !status.secrets_available;
 }
 
 async function initErase() {
@@ -1347,6 +1452,7 @@ window.__blurtSettings = () => toggleSettings();
 el.compose.value = localStorage.getItem(DRAFT_KEY) || "";
 autoGrow();
 focusComposeEnd();
+el.addSecret.addEventListener("click", openSecretForm);
 initErase();
 refreshSemanticStatus();   // self-schedules its next poll (brisk while degraded, relaxed when healthy)
 loadStream(true).then(() => {
