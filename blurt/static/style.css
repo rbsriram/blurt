@@ -383,7 +383,7 @@ body {
 }
 #secret-form input:focus { border-color: var(--accent); }
 
-/* masked secret control inside a note */
+/* masked secret control inside a note: click the value to copy, "show" to reveal */
 .secret { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .secret-mask {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -393,17 +393,16 @@ body {
   border-radius: 5px;
   padding: 2px 8px;
   overflow-wrap: anywhere;
+  cursor: pointer;
 }
-.secret-btn {
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
+.secret-mask:hover { background: var(--highlight); }
+.secret-toggle {
+  color: var(--muted);
   font-size: 12px;
   cursor: pointer;
   opacity: 0.7;
 }
-.secret-btn:hover { opacity: 1; text-decoration: underline; }
+.secret-toggle:hover { opacity: 1; color: var(--accent); }
 
 /* --- smart-search banner: a floating pill below the title bar, only while Ollama is
    unreachable. A soft accent glow and a slow pulsing dot make it catch the eye without
