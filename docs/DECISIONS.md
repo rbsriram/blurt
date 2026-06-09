@@ -792,3 +792,37 @@ broken `↑` afterward. New model:
   local-model dependency a visible, first-class thing rather than hidden plumbing.
 - Positioning: Ollama is now a hard requirement to *start* blurt, but the app stays resilient to
   mid-session drops. The earlier exact-search-survives-Ollama fix (#51) still backs that resilience.
+
+### 54. Date-aware capture and search (owner)
+- Owner's idea: type "meeting David tomorrow" and find it later by date. Built as a SEARCH
+  enhancer, never a task/calendar app: dates make notes findable, never create obligations,
+  reminders, or a calendar view. That line is the whole product-identity guardrail.
+- **Freeze at capture, never re-resolve.** A date phrase is resolved to an absolute calendar day
+  the moment the note is saved (or edited), against the local "today". "tomorrow" written June 9
+  is June 10 forever, even if you reopen it in another timezone next month. This sidesteps the
+  timezone problem entirely: we never store a draggable instant. Times of day ("5pm") are left as
+  verbatim text, because we can only know YOUR capture timezone, not the event's, so any clever
+  time translation would be confidently wrong. Dates get smart; times stay literal.
+- **Pure, hand-rolled parser** (`core/dateref.py`), not a library: precision over recall is the
+  rule (a missed date is invisible, a wrong one erodes trust). Recognises relative phrases
+  (today/tomorrow/weekday/this-next-last week+month/in N days/N ago), explicit calendar dates
+  (ISO, "Jun 1", "1st of June", "14th of this month"), and numeric dates that carry a year
+  (14/2/2024, 12-12-26). Skips bare numbers and yearless slashes ("3/4 cup") to avoid false hits.
+  Month-day with no year resolves to THIS year (predictable; type the year to mean another).
+- **Ambiguous numeric dates (6/4) follow a user setting**, not magic auto-detection (owner
+  explicitly rejected locale auto-detect as over-complex). A Settings toggle picks day-first
+  (DMY, default, international) or month-first (MDY, US). Dates whose digits disambiguate (14/2)
+  and spelled-out months are unaffected. Changing the setting re-freezes existing notes at once.
+- **Storage:** an `entry_dates` table (active-only via the same supersede semantics as search);
+  read paths attach a `dates` list. Extraction runs inline on save (pure + fast, no Ollama), so
+  it is searchable instantly and works when Ollama is down. A versioned backfill freezes dates on
+  pre-existing notes, anchored to each note's OWN creation date, and re-runs when the parser
+  version bumps so fixes propagate.
+- **Search merges date hits as high-confidence** (score 1.0, `date_match` flag) alongside lexical.
+  For a PURE-date query ("tomorrow", "2nd feb") semantic search is skipped, so it returns only
+  notes actually on that date plus literal-text matches, no fuzzy day-word noise. Queries with a
+  topic ("meeting tomorrow") still use semantic. A search is relative to NOW; notes are absolute,
+  so old notes stay findable by their literal word and their real date, not by a stale "tomorrow".
+- **UI:** a deliberately subtle muted date label on the left of each note footer (owner steered it
+  from an accent pill with a calendar icon down to barely-there text), kept clear of the saved-time
+  on the right so the two never read as a confusing pair. Clicking it searches that exact day.
