@@ -19,6 +19,7 @@ from . import __version__
 from .api import router
 from .config import settings
 from .core import Indexer, MarkdownMirror, OllamaEmbedder, Retriever
+from .core.dateref import anchor_dates
 from .core.synthesizer import Synthesizer
 from .db import Database
 
@@ -28,6 +29,11 @@ log = logging.getLogger("blurt")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db = Database(settings.db_path, settings.embed_dim)
+    # One-time: light up date chips/search on notes written before this feature.
+    # Anchored to each note's creation date, so old "tomorrow"s resolve correctly.
+    backfilled = db.backfill_dates(anchor_dates)
+    if backfilled:
+        log.info("Froze date references for %d existing notes", backfilled)
     embedder = OllamaEmbedder(
         url=settings.ollama_url,
         model=settings.embed_model,
