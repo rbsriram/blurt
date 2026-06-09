@@ -272,7 +272,7 @@ body {
   min-width: 260px;
   max-height: 300px;
   overflow-y: auto;
-  background: var(--panel);   /* flat: a subtle tone shift for readability, no border/radius/shadow */
+  background: var(--bg);   /* same tone as the pad: flat, no panel colour, no border/radius/shadow */
   padding: 4px 0;
   z-index: 20;
   animation: peekfade 120ms ease both;
