@@ -230,7 +230,6 @@ const el = {
   settings: document.getElementById("settings"),
   slashmenu: document.getElementById("slashmenu"),
   composeRow: document.getElementById("compose-row"),
-  addSecret: document.getElementById("add-secret"),
   secretForm: document.getElementById("secret-form"),
   welcome: document.getElementById("welcome"),
   splash: document.getElementById("splash"),
@@ -402,15 +401,17 @@ function secretControl(e) {
 function openSecretForm() {
   if (!el.secretForm.hidden) return closeSecretForm();
   el.secretForm.innerHTML = `
-    <input id="sec-label" placeholder="what is it?" autocomplete="off" spellcheck="false" />
+    <input id="sec-label" placeholder="key" autocomplete="off" spellcheck="false" />
     <div id="sec-value-row">
       <input id="sec-value" type="password" placeholder="secret" autocomplete="off" spellcheck="false" />
-      <span id="sec-show" class="secret-toggle">show</span>
+      <span id="sec-show" class="secret-toggle" hidden>show</span>
     </div>`;
   el.secretForm.hidden = false;
   const label = document.getElementById("sec-label");
   const value = document.getElementById("sec-value");
   const show = document.getElementById("sec-show");
+  // The show/hide toggle only appears once there's something to reveal.
+  value.addEventListener("input", () => { show.hidden = !value.value; });
   show.addEventListener("click", () => {
     const reveal = value.type === "password";
     value.type = reveal ? "text" : "password";
@@ -1300,9 +1301,8 @@ function renderEngineStatus(status) {
   lastStatus = status;
   const node = document.getElementById("set-engine");
   if (node) node.innerHTML = engineStatusHtml(status);
-  // Show the "store a secret" affordances only when there's a keychain to hold the key.
+  // Enables ⌘K / the /secret command only when there's a keychain to hold the key.
   secretsAvailable = !!status.secrets_available;
-  if (el.addSecret) el.addSecret.hidden = !secretsAvailable;
 }
 
 async function initErase() {
@@ -1484,7 +1484,6 @@ window.__blurtSettings = () => toggleSettings();
 el.compose.value = localStorage.getItem(DRAFT_KEY) || "";
 autoGrow();
 focusComposeEnd();
-el.addSecret.addEventListener("click", openSecretForm);
 initErase();
 refreshSemanticStatus();   // self-schedules its next poll (brisk while degraded, relaxed when healthy)
 loadStream(true).then(() => {
