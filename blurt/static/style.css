@@ -352,36 +352,34 @@ body {
 #add-secret[hidden] { display: none; }
 #add-secret:hover { opacity: 1; color: var(--accent); }
 
-/* the add-secret form: a panel above the input, like the slash menu */
+/* the add-secret form: flat plain-text inputs in the pad's own style, sitting just
+   above the input bar. No box, no rounded borders, no accent — just like typing. */
 #secret-form {
   position: absolute;
   left: 0;
   right: 0;
   bottom: calc(100% + 6px);
-  background: var(--panel);
-  border: 1px solid var(--faint);
-  border-radius: 10px;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.26);
-  padding: 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--faint);
+  border-bottom: 1px solid var(--faint);
   z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  animation: peekfade 120ms ease both;
 }
 #secret-form[hidden] { display: none; }
 #secret-form input {
   width: 100%;
-  border: 1px solid var(--faint);
-  border-radius: 7px;
-  background: var(--bg);
+  border: none;
+  background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 14px;
-  padding: 7px 10px;
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 6px 0;
   outline: none;
 }
-#secret-form input:focus { border-color: var(--accent); }
+#secret-form input::placeholder { color: var(--muted); }
+/* value row: the password field + a show/hide toggle, separated from the label above */
+#sec-value-row { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--faint); }
+#sec-value-row #sec-value { flex: 1; min-width: 0; }
 
 /* masked secret control inside a note: click the value to copy, "show" to reveal */
 .secret { display: flex; align-items: center; gap: 10px; margin-top: 6px; }

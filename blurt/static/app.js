@@ -402,10 +402,20 @@ function openSecretForm() {
   if (!el.secretForm.hidden) return closeSecretForm();
   el.secretForm.innerHTML = `
     <input id="sec-label" placeholder="what is it?" autocomplete="off" spellcheck="false" />
-    <input id="sec-value" type="password" placeholder="secret" autocomplete="off" spellcheck="false" />`;
+    <div id="sec-value-row">
+      <input id="sec-value" type="password" placeholder="secret" autocomplete="off" spellcheck="false" />
+      <span id="sec-show" class="secret-toggle">show</span>
+    </div>`;
   el.secretForm.hidden = false;
   const label = document.getElementById("sec-label");
   const value = document.getElementById("sec-value");
+  const show = document.getElementById("sec-show");
+  show.addEventListener("click", () => {
+    const reveal = value.type === "password";
+    value.type = reveal ? "text" : "password";
+    show.textContent = reveal ? "hide" : "show";
+    value.focus();
+  });
   const onKey = (ev) => {
     if (ev.key === "Escape") { ev.preventDefault(); closeSecretForm(); return; }
     if (ev.key !== "Enter") return;
