@@ -24,6 +24,7 @@ from .schemas import (
     EntryUpdate,
     NotesDirRequest,
     QueryRequest,
+    SecretCreate,
     SuggestRequest,
     SynthesizeRequest,
 )
@@ -70,6 +71,9 @@ async def status(request: Request):
         "entry_count": db.count_active_entries(),
         "indexing_pending": _indexer(request).pending(),
         "version": request.app.state.version,
+        # Whether jotted secrets can be stored (OS keychain reachable). Lets the UI
+        # hide the affordance when there's no secure place to keep the key.
+        "secrets_available": request.app.state.vault is not None,
         # Lets the UI surface the test-only erase control; off in any normal run.
         "testing": settings.enable_test_endpoints,
     }
@@ -183,6 +187,41 @@ async def get_chunks(entry_id: int, request: Request):
     if db.get_entry(entry_id) is None:
         raise HTTPException(status_code=404, detail="entry not found")
     return {"chunks": db.get_chunks(entry_id)}
+
+
+# --- secrets ------------------------------------------------------------
+
+@router.post("/secrets", status_code=201)
+async def create_secret(body: SecretCreate, request: Request):
+    """Store a jotted credential: the label is the visible, searchable note content;
+    the value is encrypted at rest and never mirrored or indexed."""
+    vault = request.app.state.vault
+    if vault is None:
+        raise HTTPException(status_code=503, detail="secret storage unavailable")
+    if len(body.value) > settings.max_content_chars:
+        raise HTTPException(status_code=413, detail="secret too large")
+    db = _db(request)
+    entry = db.add_secret(body.label, vault.encrypt(body.value))
+    # The label is ordinary content, so index it (you want to find "gmail password").
+    _indexer(request).enqueue(entry["id"])
+    _touch_mirror(request)
+    return entry
+
+
+@router.post("/secrets/{entry_id}/reveal")
+async def reveal_secret(entry_id: int, request: Request):
+    """Decrypt and return a secret's value. POST (not GET) so it isn't cached or logged
+    as a URL. Localhost + Host-guard already gate who can call it."""
+    vault = request.app.state.vault
+    if vault is None:
+        raise HTTPException(status_code=503, detail="secret storage unavailable")
+    blob = _db(request).secret_blob(entry_id)
+    if blob is None:
+        raise HTTPException(status_code=404, detail="not a secret")
+    try:
+        return {"value": vault.decrypt(blob)}
+    except Exception as e:  # key rotated/missing or tampered ciphertext
+        raise HTTPException(status_code=422, detail="could not decrypt secret") from e
 
 
 # --- ghost & search -----------------------------------------------------

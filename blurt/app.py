@@ -20,6 +20,7 @@ from .api import router
 from .config import settings
 from .core import Indexer, MarkdownMirror, OllamaEmbedder, Retriever
 from .core.dateref import anchor_dates
+from .core.secrets import open_vault
 from .core.synthesizer import Synthesizer
 from .db import Database
 
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI):
     app.state.retriever = retriever
     app.state.synthesizer = synthesizer
     app.state.mirror = mirror
+    # Encrypts jotted secrets; None if the OS keychain is unavailable (then the
+    # secrets feature simply stays off, rest of the app unaffected).
+    app.state.vault = open_vault()
     app.state.version = __version__
 
     log.info("Blurt %s ready on http://%s:%s", __version__, settings.host, settings.port)
