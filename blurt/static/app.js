@@ -400,10 +400,14 @@ function secretControl(e) {
 // Keyboard only: enter saves, esc cancels, enter on the label jumps to the value.
 function openSecretForm() {
   if (!el.secretForm.hidden) return closeSecretForm();
+  // data-*-ignore + autocomplete keep browser/password-manager autofill icons out of
+  // these fields (this is our own local vault, not a login form).
+  const NOFILL = 'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" '
+    + 'data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other"';
   el.secretForm.innerHTML = `
-    <input id="sec-label" placeholder="key" autocomplete="off" spellcheck="false" />
+    <input id="sec-label" placeholder="key" ${NOFILL} />
     <div id="sec-value-row">
-      <input id="sec-value" type="password" placeholder="secret" autocomplete="off" spellcheck="false" />
+      <input id="sec-value" type="password" placeholder="secret" ${NOFILL} />
       <span id="sec-show" class="secret-toggle" hidden>show</span>
     </div>`;
   el.secretForm.hidden = false;
