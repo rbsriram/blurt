@@ -224,8 +224,8 @@ _PATTERNS: list[tuple[re.Pattern, object]] = [
 ]
 
 
-def _find_ranges(text: str, today: date, order: str) -> list[tuple[date, date]]:
-    """All date ranges referenced in ``text``, resolved against ``today``.
+def _find(text: str, today: date, order: str) -> list[tuple[int, int, tuple[date, date]]]:
+    """Every date reference in ``text`` as (text_start, text_end, (date_start, date_end)).
 
     Overlapping matches are resolved greedily by (earliest start, longest span),
     so a phrase is claimed by its most specific pattern and never double-counted.
@@ -239,15 +239,42 @@ def _find_ranges(text: str, today: date, order: str) -> list[tuple[date, date]]:
     candidates.sort(key=lambda c: (c[0], -(c[1] - c[0])))
 
     claimed: list[tuple[int, int]] = []
-    ranges: list[tuple[date, date]] = []
+    found: list[tuple[int, int, tuple[date, date]]] = []
     for start, end, handler, m in candidates:
         if any(not (end <= cs or start >= ce) for cs, ce in claimed):
             continue  # overlaps an already-claimed span
         rng = handler(m, today, order) if handler is _h_numeric else handler(m, today)
         if rng is not None:
-            ranges.append(rng)
+            found.append((start, end, rng))
             claimed.append((start, end))
-    return ranges
+    return found
+
+
+def _find_ranges(text: str, today: date, order: str) -> list[tuple[date, date]]:
+    return [rng for _, _, rng in _find(text, today, order)]
+
+
+# Connective words that sit around a date without adding a topic of their own, so a
+# query made only of these plus a date ("on 14/2/2024", "due jun 1") still counts as
+# a pure date search.
+_DATE_FILLER = {"on", "the", "of", "at", "by", "for", "due", "date", "dated", "a", "an"}
+
+
+def query_is_date_only(text: str, today: date, order: str = "DMY") -> bool:
+    """True when a search query is essentially just a date ("tomorrow", "2nd feb").
+
+    Lets search skip fuzzy semantic guesses for these and return only notes actually
+    on that date plus literal-text matches, so "tomorrow" never drags in "today".
+    """
+    spans = [(s, e) for s, e, _ in _find(text, today, order)]
+    if not spans:
+        return False
+    chars = list(text)
+    for s, e in spans:
+        for i in range(s, e):
+            chars[i] = " "
+    leftover = re.sub(r"[^a-z0-9]+", " ", "".join(chars).lower())
+    return not [w for w in leftover.split() if w not in _DATE_FILLER]
 
 
 def anchor_dates(text: str, today: date, order: str = "DMY") -> list[str]:

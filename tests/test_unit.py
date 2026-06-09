@@ -15,7 +15,7 @@ from blurt.api.schemas import CheckboxToggle, EntryCreate, QueryRequest
 from blurt.config import Settings
 from blurt.core.checklist import set_checkbox
 from blurt.core.chunker import chunk_text
-from blurt.core.dateref import anchor_dates, query_ranges
+from blurt.core.dateref import anchor_dates, query_is_date_only, query_ranges
 from blurt.core.exporter import render_stream_markdown
 from blurt.core.indexer import Indexer
 from blurt.core.retriever import Retriever
@@ -252,6 +252,29 @@ def test_month_day_without_year_is_current_year_not_next():
     # not jump to next year.
     assert anchor_dates("jun 1", TODAY) == ["2026-06-01"]
     assert query_ranges("jun 1", TODAY) == [("2026-06-01", "2026-06-01")]
+
+
+@pytest.mark.parametrize("text", ["tomorrow", "2nd feb", "on 14/2/2024", "next week", "due jun 1"])
+def test_pure_date_queries_are_recognized(text):
+    assert query_is_date_only(text, TODAY) is True
+
+
+@pytest.mark.parametrize("text", ["meeting tomorrow", "sarah birthday", "dog", "pay rent next week now"])
+def test_queries_with_a_topic_are_not_date_only(text):
+    assert query_is_date_only(text, TODAY) is False
+
+
+def test_pure_date_search_drops_semantic_noise(db):
+    # "tomorrow" must not surface a note dated today via fuzzy meaning. With a dead
+    # embedder, semantic is off anyway; the point is date+lexical still return and the
+    # today-note (no text/date match) does not.
+    tom = db.add_entry("dentist appt")
+    db.set_entry_dates(tom["id"], ["2026-06-11"])           # tomorrow, relative to TODAY
+    today = db.add_entry("vish bday")
+    db.set_entry_dates(today["id"], ["2026-06-10"])         # today: must NOT match "tomorrow"
+    res = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).query("11/6/2026"))
+    ids = [e["id"] for e in res["entries"]]
+    assert tom["id"] in ids and today["id"] not in ids
 
 
 @pytest.mark.parametrize("text", [
