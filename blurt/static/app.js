@@ -272,11 +272,13 @@ function entryNode(e) {
   const body = document.createElement("div");
   body.className = "entry-body";
   if (e.is_secret) {
-    // A secret note: the label is the visible content, the value stays masked behind
-    // reveal/copy. No inline edit (clicking only edits text, which the label-only
-    // content doesn't need here), so the body click is inert except its controls.
-    body.innerHTML = md(e.content);
-    body.appendChild(secretControl(e));
+    // A secret note, one line: label | masked value | show. Plain-text label (no
+    // markdown block, which would force a second line). Not inline-editable.
+    body.classList.add("secret-note");
+    const lbl = document.createElement("span");
+    lbl.className = "secret-label";
+    lbl.textContent = e.content;
+    body.append(lbl, secretControl(e));
   } else {
     body.innerHTML = md(e.content);
     // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
