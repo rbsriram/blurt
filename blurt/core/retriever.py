@@ -18,7 +18,7 @@ from datetime import date
 
 from ..config import Settings
 from ..db import Database
-from .dateref import query_ranges
+from .dateref import query_is_date_only, query_ranges
 from .embedder import OllamaEmbedder
 
 
@@ -91,24 +91,31 @@ class Retriever:
         # whose frozen date lands in that range. Like lexical, this is exact and
         # embedding-independent, so it works the instant a note is saved and even
         # when Ollama is down. Resolved against the local "today".
-        ranges = query_ranges(q, date.today(), self._s.date_order)
+        today = date.today()
+        ranges = query_ranges(q, today, self._s.date_order)
         date_hits = (
             await asyncio.to_thread(self._db.entries_in_ranges, ranges, cap) if ranges else []
         )
+        # When the query is purely a date, semantic guesses are noise (they drag in
+        # other day-words like "today" under a "tomorrow" search). Show only real
+        # date hits and exact-text hits in that case.
+        date_only = bool(ranges) and query_is_date_only(q, today, self._s.date_order)
 
         # 2. Semantic: vector KNN collapsed to parent entries by best chunk. Best-effort:
         # if embeddings are unavailable (Ollama down), exact matches must still return, so a
         # failure here degrades to lexical-only rather than sinking the whole search.
+        # Skipped entirely for a pure-date query (see date_only above).
         best: dict[int, float] = {}
         try:
-            vec = await self._embedder.embed_query(q)
-            hits = await asyncio.to_thread(self._db.knn, vec, self._s.query_top_chunks)
-            if hits:
-                mapping = await asyncio.to_thread(self._db.chunk_entry_map, [c for c, _ in hits])
-                for chunk_id, sim in hits:
-                    eid = mapping.get(chunk_id)
-                    if eid is not None and (eid not in best or sim > best[eid]):
-                        best[eid] = sim
+            if not date_only:
+                vec = await self._embedder.embed_query(q)
+                hits = await asyncio.to_thread(self._db.knn, vec, self._s.query_top_chunks)
+                if hits:
+                    mapping = await asyncio.to_thread(self._db.chunk_entry_map, [c for c, _ in hits])
+                    for chunk_id, sim in hits:
+                        eid = mapping.get(chunk_id)
+                        if eid is not None and (eid not in best or sim > best[eid]):
+                            best[eid] = sim
         except Exception:
             pass  # Ollama unreachable/slow: return the lexical hits we already have
         ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
