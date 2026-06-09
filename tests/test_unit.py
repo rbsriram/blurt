@@ -7,6 +7,7 @@ regressions are caught without external services.
 
 import asyncio
 import os
+from datetime import date
 
 import pytest
 
@@ -14,6 +15,7 @@ from blurt.api.schemas import CheckboxToggle, EntryCreate, QueryRequest
 from blurt.config import Settings
 from blurt.core.checklist import set_checkbox
 from blurt.core.chunker import chunk_text
+from blurt.core.dateref import anchor_dates, query_ranges
 from blurt.core.exporter import render_stream_markdown
 from blurt.core.indexer import Indexer
 from blurt.core.retriever import Retriever
@@ -187,6 +189,80 @@ def test_reset_wipes(db):
     db.reset()
     assert db.count_active_entries() == 0
     assert db.list_entries() == []
+
+
+# ---- date references (dateref) ----------------------------------------
+
+# Wednesday, anchor for every relative case below.
+TODAY = date(2026, 6, 10)
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("meeting with David tomorrow", ["2026-06-11"]),
+    ("call mom today", ["2026-06-10"]),
+    ("that was yesterday", ["2026-06-09"]),
+    ("ship it day after tomorrow", ["2026-06-12"]),     # not 06-11 from "tomorrow"
+    ("dentist next friday", ["2026-06-19"]),            # Fri after this week's Fri
+    ("standup this monday", ["2026-06-08"]),            # Monday of the current week
+    ("lunch next week", ["2026-06-15"]),                # anchors to next Monday
+    ("flight on 2026-07-01", ["2026-07-01"]),
+    ("invoice due Jun 15", ["2026-06-15"]),
+    ("party 4 july", ["2026-07-04"]),
+    ("review in 3 days", ["2026-06-13"]),
+    ("started 2 weeks ago", ["2026-05-27"]),
+])
+def test_anchor_dates_resolves(text, expected):
+    assert anchor_dates(text, TODAY) == expected
+
+
+@pytest.mark.parametrize("text", [
+    "meeting David at five",        # bare number is not a date (precision over recall)
+    "we may go there",              # bare month word without a day number
+    "see you at 9pm",               # time of day is left to the verbatim text
+    "buy 6 eggs",
+    "ref 1/6 attached",             # ambiguous numeric slash date, skipped on purpose
+])
+def test_anchor_dates_ignores_ambiguous(text):
+    assert anchor_dates(text, TODAY) == []
+
+
+def test_anchor_dates_dedupes_and_sorts():
+    assert anchor_dates("today and again today, then tomorrow", TODAY) == ["2026-06-10", "2026-06-11"]
+
+
+def test_query_ranges_expands_week_to_span():
+    assert query_ranges("next week", TODAY) == [("2026-06-15", "2026-06-21")]
+
+
+def test_query_ranges_point_is_single_day():
+    assert query_ranges("tomorrow", TODAY) == [("2026-06-11", "2026-06-11")]
+
+
+# ---- date storage + search -------------------------------------------
+
+def test_entry_dates_frozen_on_save_and_searchable(db):
+    e = db.add_entry("meeting David tomorrow")
+    db.set_entry_dates(e["id"], anchor_dates("meeting David tomorrow", TODAY))
+    assert db.get_entry(e["id"])["dates"] == ["2026-06-11"]
+    # The "next week" range (Mon 15..Sun 21) must NOT include tomorrow (Thu 11).
+    assert db.entries_in_ranges([("2026-06-15", "2026-06-21")], 10) == []
+    # A range covering tomorrow finds it.
+    hits = db.entries_in_ranges([("2026-06-11", "2026-06-11")], 10)
+    assert [h["id"] for h in hits] == [e["id"]]
+
+
+def test_date_search_excludes_superseded(db):
+    e = db.add_entry("dentist tomorrow")
+    db.set_entry_dates(e["id"], ["2026-06-11"])
+    db.supersede_entry(e["id"])
+    assert db.entries_in_ranges([("2026-06-11", "2026-06-11")], 10) == []
+
+
+def test_set_entry_dates_replaces(db):
+    e = db.add_entry("note")
+    db.set_entry_dates(e["id"], ["2026-06-11", "2026-06-12"])
+    db.set_entry_dates(e["id"], ["2026-06-20"])          # re-save drops the old set
+    assert db.get_entry(e["id"])["dates"] == ["2026-06-20"]
 
 
 def test_set_content_in_place_keeps_id_and_vectors(db):
