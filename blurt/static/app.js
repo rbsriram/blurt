@@ -229,6 +229,7 @@ const el = {
   cheatsheet: document.getElementById("cheatsheet"),
   settings: document.getElementById("settings"),
   slashmenu: document.getElementById("slashmenu"),
+  composeRow: document.getElementById("compose-row"),
   addSecret: document.getElementById("add-secret"),
   secretForm: document.getElementById("secret-form"),
   welcome: document.getElementById("welcome"),
@@ -425,12 +426,14 @@ function openSecretForm() {
   };
   label.addEventListener("keydown", onKey);
   value.addEventListener("keydown", onKey);
+  el.composeRow.hidden = true;   // the form replaces the text box while open
   label.focus();
 }
 
 function closeSecretForm() {
   el.secretForm.hidden = true;
   el.secretForm.innerHTML = "";
+  el.composeRow.hidden = false;
   focusComposeEnd();
 }
 
