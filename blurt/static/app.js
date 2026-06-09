@@ -991,8 +991,21 @@ function resultNode(e, query, i) {
   if (chip) { chip.classList.add("result-date"); time.appendChild(chip); }
   const body = document.createElement("div");
   body.className = "result-body";
-  body.innerHTML = md(e.content);
-  highlightTerms(body, query);
+  if (e.is_secret) {
+    // Show it as a secret here too: label │ masked value | show, so it's obvious
+    // it's a secret and you can reveal/copy straight from search.
+    body.classList.add("secret-note");
+    const lbl = document.createElement("span");
+    lbl.className = "secret-label";
+    lbl.textContent = e.content;
+    const div = document.createElement("span");
+    div.className = "sec-div";
+    body.append(lbl, div, secretControl(e));
+    highlightTerms(lbl, query);
+  } else {
+    body.innerHTML = md(e.content);
+    highlightTerms(body, query);
+  }
   node.append(time, body);
   node.addEventListener("click", () => locateEntry(e.id));
   return node;
