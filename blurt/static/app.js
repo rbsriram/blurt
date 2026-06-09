@@ -278,7 +278,9 @@ function entryNode(e) {
     const lbl = document.createElement("span");
     lbl.className = "secret-label";
     lbl.textContent = e.content;
-    body.append(lbl, secretControl(e));
+    const div = document.createElement("span");
+    div.className = "sec-div";
+    body.append(lbl, div, secretControl(e));
   } else {
     body.innerHTML = md(e.content);
     // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
@@ -412,6 +414,7 @@ function openSecretForm() {
   // hidden but never triggers password autofill. "show" toggles the masking.
   el.secretForm.innerHTML = `
     <input id="sec-label" placeholder="key" ${NOFILL} />
+    <span class="sec-div"></span>
     <input id="sec-value" placeholder="secret" ${NOFILL} />
     <span id="sec-show" class="secret-toggle" hidden>show</span>`;
   el.secretForm.hidden = false;
