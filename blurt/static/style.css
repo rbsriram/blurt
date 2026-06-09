@@ -333,25 +333,6 @@ body {
 #inputhint .undo-link { color: var(--accent); cursor: pointer; }
 #inputhint .undo-link:hover { text-decoration: underline; }
 
-/* "store a secret": a faint icon button beside the input, brightens on hover.
-   A flex sibling of the textarea (not overlaid), so the click always lands. */
-#add-secret {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px;
-  margin-bottom: 2px;
-  background: none;
-  border: none;
-  color: var(--muted);
-  opacity: 0.4;
-  cursor: pointer;
-  transition: opacity var(--reveal), color var(--reveal);
-}
-#add-secret[hidden] { display: none; }
-#add-secret:hover { opacity: 1; color: var(--accent); }
-
 /* the add-secret form: flat plain-text inputs in the pad's own style. It sits
    in-flow and REPLACES the compose box while open (app.js hides #compose-row), so
    it reads as the input, not a floating panel. No box, no rounded borders, no accent. */
