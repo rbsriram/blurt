@@ -397,24 +397,24 @@ function secretControl(e) {
 }
 
 // The "store a secret" form: a label (visible, searchable) + the value (encrypted).
+// Keyboard only: enter saves, esc cancels, enter on the label jumps to the value.
 function openSecretForm() {
   if (!el.secretForm.hidden) return closeSecretForm();
   el.secretForm.innerHTML = `
-    <input id="sec-label" placeholder="what is it? (e.g. gmail password)" autocomplete="off" spellcheck="false" />
-    <input id="sec-value" type="password" placeholder="the secret" autocomplete="off" spellcheck="false" />
-    <div class="secret-row">
-      <button id="sec-save">save encrypted</button>
-      <button id="sec-cancel" class="ghost">cancel</button>
-    </div>
-    <div class="secret-disclaimer">Encrypted on this device and kept out of search and the markdown file.
-      A safer place to jot a credential, not a password manager.</div>`;
+    <input id="sec-label" placeholder="what is it?" autocomplete="off" spellcheck="false" />
+    <input id="sec-value" type="password" placeholder="secret" autocomplete="off" spellcheck="false" />`;
   el.secretForm.hidden = false;
   const label = document.getElementById("sec-label");
   const value = document.getElementById("sec-value");
-  document.getElementById("sec-save").onclick = saveSecret;
-  document.getElementById("sec-cancel").onclick = closeSecretForm;
-  value.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); saveSecret(); } });
-  el.secretForm.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.preventDefault(); closeSecretForm(); } });
+  const onKey = (ev) => {
+    if (ev.key === "Escape") { ev.preventDefault(); closeSecretForm(); return; }
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (ev.target === label && label.value.trim()) { value.focus(); return; }  // label -> value
+    saveSecret();
+  };
+  label.addEventListener("keydown", onKey);
+  value.addEventListener("keydown", onKey);
   label.focus();
 }
 
@@ -522,6 +522,7 @@ const SLASH_ITEMS = [
   { label: "quote",      hint: ">",     keys: "quote blockquote",                    insert: "> " },
   { label: "code block", hint: "```",   keys: "code codeblock pre block",            insert: "```\n\n```\n", caret: 4 },
   { label: "divider",    hint: "---",   keys: "divider rule line hr separator",      insert: "---\n" },
+  { label: "secret",     hint: "encrypted", keys: "secret password credential pwd pin key lock", action: "secret" },
 ];
 
 function updateSlashMenu() {
@@ -534,8 +535,9 @@ function updateSlashMenu() {
   const m = ta.value.slice(lineStart, pos).match(/^\/([\w-]*)$/);
   if (!m) { closeSlash(); return; }
   const q = m[1].toLowerCase();
-  const items = q ? SLASH_ITEMS.filter((it) => it.keys.split(" ").some((k) => k.startsWith(q)))
-                  : SLASH_ITEMS.slice();
+  let items = q ? SLASH_ITEMS.filter((it) => it.keys.split(" ").some((k) => k.startsWith(q)))
+                : SLASH_ITEMS.slice();
+  if (el.addSecret.hidden) items = items.filter((it) => it.action !== "secret");  // no keychain
   if (!items.length) { closeSlash(); return; }
   state.slash = { open: true, items, focus: 0, lineStart };
   renderSlash();
@@ -566,6 +568,14 @@ function chooseSlash(i) {
   const it = state.slash.items[i];
   if (!it) return;
   const ta = el.compose;
+  if (it.action === "secret") {                 // drop the "/secret" and open the form
+    ta.setRangeText("", state.slash.lineStart, ta.selectionStart, "end");
+    closeSlash();
+    autoGrow();
+    localStorage.setItem(DRAFT_KEY, ta.value);
+    openSecretForm();
+    return;
+  }
   ta.setRangeText(it.insert, state.slash.lineStart, ta.selectionStart, "end");
   if (it.caret != null) {                       // park the cursor inside (e.g. a code block)
     const c = state.slash.lineStart + it.caret;
