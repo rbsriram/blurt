@@ -79,19 +79,26 @@ and **Python 3.11+**.
 **1. Ollama.** Download it from [ollama.com/download](https://ollama.com/download)
 (or `brew install ollama` if you use Homebrew), then open it once so it is running.
 
-**2. Blurt**, the easy way, with [pipx](https://pipx.pypa.io):
+**2. pipx**, which runs Blurt in its own isolated space. If you do not already have
+it, install it once (then open a new terminal so it is on your PATH).
+
+With Homebrew:
+
+```bash
+brew install pipx && pipx ensurepath
+```
+
+Without Homebrew:
+
+```bash
+python3 -m pip install --user pipx && python3 -m pipx ensurepath
+```
+
+**3. Blurt**, with [pipx](https://pipx.pypa.io):
 
 ```bash
 pipx install git+https://github.com/rbsriram/blurt
 blurt
-```
-
-No `pipx`? Install it once, then run the two lines above in a new terminal:
-
-```bash
-brew install pipx && pipx ensurepath                          # macOS with Homebrew
-# or, without Homebrew:
-python3 -m pip install --user pipx && python3 -m pipx ensurepath
 ```
 
 `blurt` opens it in its own desktop window, and on macOS it adds itself to your
