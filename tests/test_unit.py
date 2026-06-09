@@ -204,10 +204,13 @@ TODAY = date(2026, 6, 10)
     ("ship it day after tomorrow", ["2026-06-12"]),     # not 06-11 from "tomorrow"
     ("dentist next friday", ["2026-06-19"]),            # Fri after this week's Fri
     ("standup this monday", ["2026-06-08"]),            # Monday of the current week
-    ("lunch next week", ["2026-06-15"]),                # anchors to next Monday
     ("flight on 2026-07-01", ["2026-07-01"]),
     ("invoice due Jun 15", ["2026-06-15"]),
     ("party 4 july", ["2026-07-04"]),
+    ("see you on the 14th of June", ["2026-06-14"]),    # "of" between day and month
+    ("on the 14th of this month i fly", ["2026-06-14"]),  # not "jun 1" from "this month"
+    ("dated 14/2/2024", ["2024-02-14"]),                # day-first slash date with year
+    ("dated 14-12-2026", ["2026-12-14"]),               # day-first dash date with year
     ("review in 3 days", ["2026-06-13"]),
     ("started 2 weeks ago", ["2026-05-27"]),
 ])
@@ -216,11 +219,20 @@ def test_anchor_dates_resolves(text, expected):
 
 
 @pytest.mark.parametrize("text", [
+    "do taxes this month",          # a whole month is not a single day: no chip...
+    "lunch next week",              # ...nor is a whole week.
+])
+def test_vague_spans_do_not_anchor_a_note(text):
+    assert anchor_dates(text, TODAY) == []
+
+
+@pytest.mark.parametrize("text", [
     "meeting David at five",        # bare number is not a date (precision over recall)
     "we may go there",              # bare month word without a day number
     "see you at 9pm",               # time of day is left to the verbatim text
     "buy 6 eggs",
-    "ref 1/6 attached",             # ambiguous numeric slash date, skipped on purpose
+    "ref 1/6 attached",             # slash with no year: a ref, not a date
+    "use 3/4 cup of flour",         # fraction, not a date
 ])
 def test_anchor_dates_ignores_ambiguous(text):
     assert anchor_dates(text, TODAY) == []
