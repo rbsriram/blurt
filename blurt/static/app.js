@@ -798,12 +798,26 @@ function renderPeek() {
     const time = document.createElement("span");
     time.className = "peek-time";
     time.textContent = relTime(m.created_at);
-    const txt = document.createElement("span");
-    txt.textContent = (i === p.focus)
-      ? m.content.replace(/\s+/g, " ")
-      : m.content.replace(/\s+/g, " ").slice(0, PEEK_SNIPPET);
-    line.append(time, txt);
-    highlightTerms(txt, p.query);
+    line.appendChild(time);
+    if (m.is_secret) {
+      // Show it as a secret here too: label │ masked value | show (same as search).
+      const sec = document.createElement("span");
+      sec.className = "peek-secret";
+      const lbl = document.createElement("span");
+      lbl.textContent = m.content;
+      const div = document.createElement("span");
+      div.className = "sec-div";
+      sec.append(lbl, div, secretControl(m));
+      line.appendChild(sec);
+      highlightTerms(lbl, p.query);
+    } else {
+      const txt = document.createElement("span");
+      txt.textContent = (i === p.focus)
+        ? m.content.replace(/\s+/g, " ")
+        : m.content.replace(/\s+/g, " ").slice(0, PEEK_SNIPPET);
+      line.appendChild(txt);
+      highlightTerms(txt, p.query);
+    }
     line.addEventListener("click", () => setFocus(i));
     el.peek.appendChild(line);
   });
@@ -857,14 +871,15 @@ async function editPeekFocused() {
   if (!node) return;                          // gone (raced with a delete) — bail quietly
   const e = state.entries.get(String(m.id)) || m;
   node.scrollIntoView({ block: "center" });
-  if (e.is_secret) { clearPeek(); flash(node); return; }  // secrets aren't inline-editable; just locate
   // Stepping into an existing note from the peek: the draft was only the search
   // trigger, so clear it now (no leftover duplicate in the input box) and return
   // focus there afterward via the editor's own save/cancel/delete paths.
   el.compose.value = "";
   localStorage.removeItem(DRAFT_KEY);
   autoGrow();
-  openEditor(node, e);
+  clearPeek();
+  if (e.is_secret) openSecretEditor(node, e);   // the key│value editor, not the text editor
+  else openEditor(node, e);
 }
 
 async function supersedePeekFocused() {
