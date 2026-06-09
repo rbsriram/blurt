@@ -302,23 +302,15 @@ function entryNode(e) {
     });
   }
 
-  // Footer under the note: retire affordance on the left (hover-only), faint
-  // timestamp pinned to the bottom-right.
+  // Footer under the note. No delete button: a note is deleted by emptying it
+  // (⌘A, delete) and pressing Enter, like any text pad. The date chip sits on the
+  // left (it's about the content); the faint saved-time stays at the far right.
   const foot = document.createElement("div");
   foot.className = "entry-foot";
-  const action = document.createElement("button");
-  action.className = "entry-action";
-  action.textContent = "×";
-  action.title = "delete this note";
-  action.addEventListener("click", (ev) => { ev.stopPropagation(); retireEntry(e.id); });
   const time = document.createElement("div");
   time.className = "entry-time";
   time.textContent = relTime(e.created_at);
-  // The note's referenced date is a tagged pill on the LEFT (it's about the
-  // content); the faint saved-time stays at the far right (it's metadata). Kept
-  // apart so the two never read as a confusing pair of dates.
   const chip = dateChip(e.dates);
-  foot.append(action);
   if (chip) foot.append(chip);
   foot.append(time);
 
@@ -1068,6 +1060,7 @@ function keyListHtml() {
     [`enter`, "save the note"],
     [`shift+enter`, "new line"],
     [`/`, "formatting menu (at line start)"],
+    [`${MOD}+k`, "store a secret (encrypted)"],
     [`${MOD}+↑`, "browse matches in the peek"],
     [`↑ / ↓`, "move through the peek"],
     [`enter`, "edit the focused match"],

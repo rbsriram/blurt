@@ -73,10 +73,9 @@ body {
   transition: background var(--reveal);
 }
 .entry:hover { background: var(--highlight); }
-/* While one note is being edited, don't let hovering the others highlight them or
-   reveal their delete affordance — the edit box is the only thing that should stand out. */
+/* While one note is being edited, don't let hovering the others highlight them —
+   the edit box is the only thing that should stand out. */
 #stream.editing .entry:hover { background: transparent; }
-#stream.editing .entry-action { opacity: 0; }
 .entry-body { word-break: break-word; cursor: text; line-height: 1.45; }
 .entry-body > *:first-child { margin-top: 0; }
 .entry-body > *:last-child { margin-bottom: 0; }
@@ -150,20 +149,6 @@ body {
   100% { background: transparent; }
 }
 
-.entry-action {
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0;
-  transition: opacity var(--reveal), color var(--reveal);
-}
-.entry:hover .entry-action { opacity: 0.6; }
-.entry-action:hover { color: var(--accent); }
 
 .entry-edit {
   width: 100%;
