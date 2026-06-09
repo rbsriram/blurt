@@ -130,21 +130,31 @@ def _h_nth_of_month(m, t):
     return (d, d)
 
 
-def _h_numeric_dmy(m, t):
-    """Slash/dash date with a full year: 14/2/2024, 14-12-2026.
+def _h_numeric(m, t, order):
+    """Slash/dash date with a year: 14/2/2024, 14-12-26, 6/4/26.
 
-    Day-first (the international norm), falling back to month-first only if that's
-    impossible (e.g. 2/14/2024). Requiring a 4-digit year keeps fractions and refs
-    like '3/4' or '1/6' from being mistaken for dates.
+    Disambiguation, in order:
+      1. If one component is > 12 it can only be the day (14/2 is the 14th).
+      2. Otherwise it's genuinely ambiguous (6/4), so we honour the user's chosen
+         ``order`` ("DMY" day-first or "MDY" month-first; set in Settings).
+    Requiring a year (2- or 4-digit) keeps fractions and refs like '3/4' or '1/6'
+    from being mistaken for dates.
     """
     a, b, year = int(m.group("a")), int(m.group("b")), int(m.group("y"))
-    for day, month in ((a, b), (b, a)):
-        try:
-            d = date(year, month, day)
-        except ValueError:
-            continue
-        return (d, d)
-    return None
+    if year < 100:
+        year += 2000
+    if a > 12 and b <= 12:
+        day, month = a, b
+    elif b > 12 and a <= 12:
+        day, month = b, a
+    elif a <= 12 and b <= 12:
+        day, month = (a, b) if order == "DMY" else (b, a)
+    else:
+        return None  # both > 12: not a date
+    try:
+        return (date(year, month, day),) * 2
+    except ValueError:
+        return None
 
 
 _UNIT_DAYS = {"day": 1, "week": 7}
@@ -206,7 +216,7 @@ _PATTERNS: list[tuple[re.Pattern, object]] = [
     (re.compile(r"\b(?:the\s+)?day\s+before\s+yesterday\b", re.I), _h_day_before),
     (re.compile(r"\b(?:the\s+)?(?P<d>\d{1,2})(?:st|nd|rd|th)?\s+of\s+(?P<q>this|next|last)\s+month\b", re.I), _h_nth_of_month),
     (re.compile(r"\b(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})\b"), _h_iso),
-    (re.compile(r"\b(?P<a>\d{1,2})[/-](?P<b>\d{1,2})[/-](?P<y>\d{4})\b"), _h_numeric_dmy),
+    (re.compile(r"\b(?P<a>\d{1,2})[/-](?P<b>\d{1,2})[/-](?P<y>\d{4}|\d{2})\b"), _h_numeric),
     (re.compile(rf"\b(?P<mo>{_MO})\.?\s+(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_month_day),
     (re.compile(rf"\b(?P<d>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?(?P<mo>{_MO})\.?(?:,?\s+(?P<y>\d{{4}}))?\b", re.I), _h_day_month),
     (re.compile(r"\bin\s+(?P<n>\d{1,3})\s+(?P<unit>days?|weeks?|months?)\b", re.I), _h_in),
@@ -222,11 +232,13 @@ _PATTERNS: list[tuple[re.Pattern, object]] = [
 ]
 
 
-def _find_ranges(text: str, today: date) -> list[tuple[date, date]]:
+def _find_ranges(text: str, today: date, order: str) -> list[tuple[date, date]]:
     """All date ranges referenced in ``text``, resolved against ``today``.
 
     Overlapping matches are resolved greedily by (earliest start, longest span),
     so a phrase is claimed by its most specific pattern and never double-counted.
+    ``order`` ("DMY"/"MDY") only matters to all-numeric dates; every other handler
+    ignores it, so it is passed solely to the one that needs it.
     """
     candidates = []
     for regex, handler in _PATTERNS:
@@ -239,14 +251,14 @@ def _find_ranges(text: str, today: date) -> list[tuple[date, date]]:
     for start, end, handler, m in candidates:
         if any(not (end <= cs or start >= ce) for cs, ce in claimed):
             continue  # overlaps an already-claimed span
-        rng = handler(m, today)
+        rng = handler(m, today, order) if handler is _h_numeric else handler(m, today)
         if rng is not None:
             ranges.append(rng)
             claimed.append((start, end))
     return ranges
 
 
-def anchor_dates(text: str, today: date) -> list[str]:
+def anchor_dates(text: str, today: date, order: str = "DMY") -> list[str]:
     """Absolute single days a note refers to, as sorted unique ISO strings.
 
     Only genuine point references stamp a note ("tomorrow", "Jun 15", "14th of
@@ -254,10 +266,10 @@ def anchor_dates(text: str, today: date) -> list[str]:
     anchored: pinning them to a single day (the 1st, the Monday) would show a
     misleading chip. They still widen a *search* via query_ranges below.
     """
-    days = {s.isoformat() for s, e in _find_ranges(text, today) if s == e}
+    days = {s.isoformat() for s, e in _find_ranges(text, today, order) if s == e}
     return sorted(days)
 
 
-def query_ranges(text: str, today: date) -> list[tuple[str, str]]:
+def query_ranges(text: str, today: date, order: str = "DMY") -> list[tuple[str, str]]:
     """Date ranges a search refers to, as (start_iso, end_iso) pairs."""
-    return [(s.isoformat(), e.isoformat()) for s, e in _find_ranges(text, today)]
+    return [(s.isoformat(), e.isoformat()) for s, e in _find_ranges(text, today, order)]

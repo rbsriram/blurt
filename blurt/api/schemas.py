@@ -72,3 +72,14 @@ class NotesDirRequest(BaseModel):
         if not v.strip():
             raise ValueError("path may not be empty")
         return v
+
+
+class DateFormatRequest(BaseModel):
+    order: str  # "DMY" (day-first) or "MDY" (month-first)
+
+    @field_validator("order")
+    @classmethod
+    def _check(cls, v: str) -> str:
+        if v not in ("DMY", "MDY"):
+            raise ValueError("order must be 'DMY' or 'MDY'")
+        return v

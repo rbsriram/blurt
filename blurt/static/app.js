@@ -965,6 +965,17 @@ function settingsHtml(d) {
         Point it at any folder (e.g. inside an Obsidian or Dropbox folder) to keep them there.</div>
     </div>
     <div class="row">
+      <div class="label">date format</div>
+      <div class="value">
+        <div class="seg" id="set-dateorder">
+          <button data-order="DMY" class="${d.date_order === "MDY" ? "" : "on"}">day / month / year</button>
+          <button data-order="MDY" class="${d.date_order === "MDY" ? "on" : ""}">month / day / year</button>
+        </div>
+      </div>
+      <div class="note">How Blurt reads ambiguous numeric dates like 6/4. Spelled-out
+        months (6 Jun) are never ambiguous and always work.</div>
+    </div>
+    <div class="row">
       <div class="label">smart search engine</div>
       <div class="note" id="set-engine">${engineStatusHtml(lastStatus)}</div>
     </div>
@@ -984,13 +995,32 @@ function settingsHtml(d) {
 }
 
 async function openSettings() {
-  let d = { scratchpad_path: "", version: "" };
+  let d = { scratchpad_path: "", version: "", date_order: "DMY" };
   try { d = await api.get("/api/settings"); } catch { /* show blanks */ }
   el.settings.innerHTML = settingsHtml(d);
   el.settings.hidden = false;
   document.getElementById("set-change").onclick = changeNotesFolder;
   document.getElementById("set-update").onclick = checkUpdates;
+  el.settings.querySelectorAll("#set-dateorder button").forEach((b) => {
+    b.onclick = () => setDateOrder(b.dataset.order);
+  });
   setTimeout(() => document.addEventListener("mousedown", onSettingsOutside), 0);
+}
+
+// Flip how ambiguous numeric dates read. The server re-freezes existing notes, so
+// the change shows everywhere at once; reload the stream to reflect new chips.
+async function setDateOrder(order) {
+  const group = document.getElementById("set-dateorder");
+  const current = group.querySelector("button.on");
+  if (current && current.dataset.order === order) return;   // no-op if already active
+  const res = await api.post("/api/date-format", { order });
+  if (res.ok) {
+    group.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.order === order));
+    flashHint("date format updated");
+    loadStream(true);
+  } else {
+    flashHint("couldn't change the date format");
+  }
 }
 function onSettingsOutside(ev) { if (!el.settings.contains(ev.target)) closeSettings(); }
 function closeSettings() {
