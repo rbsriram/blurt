@@ -224,6 +224,14 @@ def test_secret_label_is_searchable_value_is_not(db):
     assert db.lexical_search("hunter2", 10) == []  # never by its value
 
 
+def test_update_secret_blob_replaces_value(db):
+    vault = SecretVault(Fernet.generate_key())
+    e = db.add_secret("key", vault.encrypt("old"))
+    assert db.update_secret_blob(e["id"], vault.encrypt("new")) is True
+    assert vault.decrypt(db.secret_blob(e["id"])) == "new"
+    assert db.update_secret_blob(99999, "x") is False   # not a secret
+
+
 def test_reset_wipes_secrets(db):
     db.add_secret("x", "blob")
     db.reset()
