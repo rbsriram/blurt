@@ -258,7 +258,7 @@ body {
   overflow: visible;
 }
 
-/* --- today surface: near-dated notes resurfaced on open, sits above the peek --- */
+/* --- "coming up": upcoming dated notes, summoned by /upcoming, sits above the peek --- */
 #today {
   flex-shrink: 0;
   max-height: 170px;
@@ -305,7 +305,8 @@ body {
   cursor: pointer;
   transition: background var(--reveal);
 }
-.today-item:hover { background: var(--highlight); border-left-color: var(--accent); }
+.today-item:hover,
+.today-item.focused { background: var(--highlight); border-left-color: var(--accent); }
 .today-when {
   color: var(--accent);
   opacity: 0.8;
