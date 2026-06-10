@@ -465,6 +465,11 @@ def _brand_macos_app() -> None:
     so macOS resolves that bundle to Python's, which is why the menu says "Python" and
     About shows the Python version and PSF copyright. Overriding these keys in the
     bundle's in-memory info dict is the standard fix for a Python GUI app.
+
+    The dock-icon hover tooltip and Cmd-Tab name are separate: macOS reads those from the
+    on-disk app bundle, which an in-memory override can't reach. A bare `python` process has
+    no bundle, so they fall back to the interpreter's name. The fix there is a real bundle:
+    production ships blurt.app; the dev launcher builds a "blurt dev.app" wrapper.
     """
     if sys.platform != "darwin":
         return
