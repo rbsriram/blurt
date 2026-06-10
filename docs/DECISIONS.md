@@ -849,3 +849,19 @@ broken `↑` afterward. New model:
   form, no accent borders), and in-app help kept current with features so he isn't the QA.
 - Shipped in v1.3.0. The "update now" in-app updater is parked as the next experiment (the current
   "check for updates" copies the `pipx upgrade` command).
+
+### 56. ↑ from an empty box walks the stream itself (owner, end-user test)
+- The peek (the as-you-type match popup) only appears while you're typing. From an empty box there was
+  no keyboard way into your existing notes, you had to reach for the mouse to edit a recent one. That
+  broke the keyboard-first promise for the most common "fix what I just wrote" case.
+- **The interaction:** in an empty compose box, `↑` highlights the newest note in the stream; `↑` again
+  steps older, `↓` newer (`↓` past the newest drops back to the box), `enter` opens the highlighted
+  note for editing in place, `esc` returns to the box. Any typed character exits browse mode and types
+  normally, so it never gets in the way of capture.
+- **Why walk the stream, not a popup:** an earlier cut of this experiment surfaced recent notes in a
+  separate peek-style popup. It felt like a second, redundant surface over the stream that's already on
+  screen. Highlighting the real stream entries (a left accent bar, `.entry.nav-focus`) is less to build,
+  less to learn, and matches how the note will look when you open it. The popup cut was dropped.
+- **Coexists with the peek:** `Cmd/Ctrl+↑` still browses the peek's semantic matches while typing; bare
+  `↑` is only bound when the box is empty, so the two never collide. Cheatsheet updated in the same change.
+- Shipped in v1.4.0.
