@@ -8,7 +8,7 @@ in single-digit milliseconds.
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -103,6 +103,31 @@ async def list_entries(
     offset: int = Query(0, ge=0),
 ):
     return {"entries": _db(request).list_entries(limit=limit, offset=offset)}
+
+
+# How far back/ahead the Today surface looks. A week each way: recently-overdue
+# commitments resurface, the week ahead is in view, older dated notes stay sunk.
+_RADAR_BACK = timedelta(days=7)
+_RADAR_AHEAD = timedelta(days=7)
+
+
+@router.get("/radar")
+async def radar(request: Request, limit: int = Query(12, ge=1, le=50)):
+    """Notes whose frozen date lands in the near window, soonest first.
+
+    Powers the Today surface: dated notes resurface on open so a commitment you wrote
+    days ago does not sink in the stream. Pure resurfacing, NOT a task list (no done
+    state, no reminders); it only reads the dates already frozen at capture. See
+    DECISIONS #54 and #57. `today` is the server's date, so the UI labels overdue vs
+    upcoming against the same day the window was computed from (no browser drift).
+    """
+    today = date.today()
+    start = (today - _RADAR_BACK).isoformat()
+    end = (today + _RADAR_AHEAD).isoformat()
+    return {
+        "entries": _db(request).entries_in_ranges([(start, end)], limit),
+        "today": today.isoformat(),
+    }
 
 
 @router.get("/entries/{entry_id}")

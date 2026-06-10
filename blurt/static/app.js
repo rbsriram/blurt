@@ -232,6 +232,7 @@ const el = {
   composeRow: document.getElementById("compose-row"),
   secretForm: document.getElementById("secret-form"),
   welcome: document.getElementById("welcome"),
+  today: document.getElementById("today"),
   splash: document.getElementById("splash"),
   erase: document.getElementById("erase"),
   ollamaGate: document.getElementById("ollama-gate"),
@@ -523,6 +524,66 @@ el.stream.addEventListener("scroll", () => {
   const distFromTop = el.stream.scrollHeight - el.stream.clientHeight - Math.abs(el.stream.scrollTop);
   if (distFromTop < 600) loadStream(false);
 });
+
+// ---------------------------------------------------------------- today surface
+// On open, dated notes whose day is near (a week back to a week ahead) resurface in a
+// compact card just above the input, so a commitment written days ago doesn't sink in
+// the stream. Glance-only: it's pure resurfacing (no done-state, no reminders), it
+// collapses once you start typing, and a dismiss hides it for the session. See
+// DECISIONS #57. Clicking an item reveals the note in the stream, its single edit home.
+const RADAR_DISMISS_KEY = "blurt-radar-dismissed";
+
+async function renderRadar() {
+  if (sessionStorage.getItem(RADAR_DISMISS_KEY)) return;
+  let data;
+  try { data = await api.get("/api/radar"); } catch { return; }
+  const items = (data?.entries || []).filter((e) => !e.is_secret);
+  if (!items.length) { hideRadar(); return; }
+
+  el.today.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "today-head";
+  const title = document.createElement("span");
+  title.textContent = "coming up";
+  const dismiss = document.createElement("button");
+  dismiss.className = "today-dismiss";
+  dismiss.textContent = "×";
+  dismiss.title = "hide until next launch";
+  dismiss.addEventListener("click", () => hideRadar(true));
+  head.append(title, dismiss);
+  el.today.appendChild(head);
+
+  for (const e of items) {
+    const row = document.createElement("button");
+    row.className = "today-item";
+    const when = document.createElement("span");
+    when.className = "today-when";
+    when.textContent = e.dates?.length ? fmtDate(e.dates[0]) : "";
+    const text = document.createElement("span");
+    text.className = "today-text";
+    text.textContent = snippet(e, 80);
+    row.append(when, text);
+    row.addEventListener("click", () => revealEntry(e.id));
+    el.today.appendChild(row);
+  }
+  el.today.hidden = false;
+}
+
+function hideRadar(remember = false) {
+  el.today.hidden = true;
+  el.today.innerHTML = "";
+  if (remember) sessionStorage.setItem(RADAR_DISMISS_KEY, "1");
+}
+
+// Bring a note into view in the stream and flash it. The note may be older than what's
+// currently loaded, so page toward it (bounded by state.end) before giving up.
+async function revealEntry(id) {
+  const find = () => el.stream.querySelector(`.entry[data-id="${id}"]`);
+  let node = find();
+  while (!node && !state.end) { await loadStream(false); node = find(); }
+  if (!node) { flashHint("couldn't find that note"); return; }
+  flash(node);                      // scroll into view + the shared reveal highlight
+}
 
 // ---------------------------------------------------------------- capture
 function autoGrow() {
@@ -1433,6 +1494,7 @@ function toggleTheme() {
 el.compose.addEventListener("input", () => {
   dismissWelcome();                 // first keystroke clears the inline welcome
   clearNav();                       // typing leaves stream-browse mode
+  hideRadar();                      // typing collapses the today surface (back on next launch)
   localStorage.setItem(DRAFT_KEY, el.compose.value);
   autoGrow();
   updateSlashMenu();                // "/" at line start opens the formatting menu
@@ -1611,6 +1673,10 @@ focusComposeEnd();
 initErase();
 refreshSemanticStatus();   // self-schedules its next poll (brisk while degraded, relaxed when healthy)
 loadStream(true).then(() => {
-  const blank = !el.stream.querySelector(".entry") && !el.compose.value.trim();
+  const hasNotes = !!el.stream.querySelector(".entry");
+  const blank = !hasNotes && !el.compose.value.trim();
   blank ? newPadIntro() : brandFlash();
+  // Resurface near-dated notes on open, but only on a settled pad: not the blank/first
+  // run, and not while a draft is sitting in the box (the first keystroke hides it anyway).
+  if (hasNotes && !el.compose.value.trim()) renderRadar();
 });

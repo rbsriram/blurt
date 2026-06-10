@@ -865,3 +865,25 @@ broken `↑` afterward. New model:
 - **Coexists with the peek:** `Cmd/Ctrl+↑` still browses the peek's semantic matches while typing; bare
   `↑` is only bound when the box is empty, so the two never collide. Cheatsheet updated in the same change.
 - Shipped in v1.4.0.
+
+### 57. Today surface: near-dated notes resurface on open (CTO, experiment)
+- The append-only stream's one real weakness: a commitment you dated days ago sinks below newer notes and
+  you never see it again unless you search. For the owner (ADHD), that's the failure mode that matters.
+  The counterweight is resurfacing, not organizing: show what's due/near the moment the app opens.
+- **What it is:** on open, a compact "coming up" card sits just above the input (a new `#today` slot, in
+  the peek's spot in the layout) listing active notes whose frozen date lands in a window a week back to a
+  week ahead, soonest first. Each row is the date label + a snippet; clicking it reveals that note in the
+  stream (scroll + the shared `focus-flash`), the stream stays the single place you edit. New endpoint
+  `GET /api/radar` reuses the existing `entries_in_ranges` date machinery; the window is computed from the
+  server's `date.today()` and returned so the UI labels overdue vs upcoming against the same day.
+- **Glance-only, gets out of the way:** it shows only on a settled pad (not first-run, not while a draft
+  sits in the box), collapses on the first keystroke, and a `×` dismisses it for the session. It never
+  delays capture and never occupies the input area once you start typing.
+- **NOT a task app (holds the line from #54):** it has no done-state, no reminders, no notifications. It
+  only re-reads dates already frozen at capture and makes them visible. The boundary stays: a search/recall
+  enhancer, never a to-do list. The week-back/week-ahead window keeps stale old dates sunk.
+- **No cheatsheet line, on purpose:** it has no keystroke. The `?` cheatsheet is strictly a keys +
+  formatting table; automatic surfaces (the peek, the date chips) aren't documented there either, and the
+  card is self-labeled ("coming up") and self-evident. A prose blurb would be exactly the cute UI text we
+  avoid. Logged here so the omission is a decision, not a stale-doc miss.
+- Experiment on `exp/today-surface`, pending owner test in the dev app.
