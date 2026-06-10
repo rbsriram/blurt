@@ -73,6 +73,8 @@ body {
   transition: background var(--reveal);
 }
 .entry:hover { background: var(--highlight); }
+/* keyboard selection when walking the stream with ↑ from an empty box */
+.entry.nav-focus { background: var(--highlight); box-shadow: inset 2px 0 0 var(--accent); }
 /* While one note is being edited, don't let hovering the others highlight them —
    the edit box is the only thing that should stand out. */
 #stream.editing .entry:hover { background: transparent; }

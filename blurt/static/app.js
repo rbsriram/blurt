@@ -246,6 +246,8 @@ const state = {
   // or an index into matches (browsing). Editing happens in the stream, not here.
   peek: { matches: [], focus: -1, query: "" },
   search: { items: [], focus: -1, query: "" },
+  nav: -1,   // ↑-from-empty stream browse: index into stream entries (0 = newest), -1 = off
+
   // slash menu: open when the current line is "/<query>"; items is the filtered list.
   slash: { open: false, items: [], focus: 0, lineStart: 0 },
 };
@@ -825,8 +827,7 @@ function renderPeek() {
   if (p.matches.length > 1) {
     const count = document.createElement("div");
     count.id = "peek-count";
-    const label = p.query ? `${p.matches.length} matches` : "recent";   // empty query = ↑ recent-browse
-    count.innerHTML = label + (p.focus < 0 ? ` · <b>↑</b> to browse` : "");
+    count.innerHTML = `${p.matches.length} matches` + (p.focus < 0 ? ` · <b>↑</b> to browse` : "");
     el.peek.appendChild(count);
   }
 
@@ -852,14 +853,34 @@ function exitPeekToInput() {           // ↓ past the newest: unfocus, peek sta
   focusComposeEnd();
 }
 
-// ↑ from an empty input box: browse recent notes, newest first (like shell history).
-// Seeds the peek with recent entries (empty query = "recent" mode) and steps in.
-async function browseRecent() {
-  const data = await api.get(`/api/entries?limit=8`);
-  const recent = (data.entries || []).filter((e) => !e.is_superseded);
-  if (!recent.length) return;
-  setPeek(recent, "");   // empty query -> renderPeek labels it "recent", not "matches"
-  enterPeek();
+// ---- ↑ from an empty box: walk the stream itself (no popup) -------------
+// Newest-first: in a column-reverse stream, DOM child 0 is the bottom (newest), so
+// ↑ highlights the latest note, ↑ again steps to the one above it, enter edits.
+function streamEntries() { return [...el.stream.querySelectorAll(".entry")]; }
+
+function setNav(i) {
+  const entries = streamEntries();
+  if (!entries.length) { clearNav(); return; }
+  i = Math.max(0, Math.min(i, entries.length - 1));
+  entries.forEach((n, k) => n.classList.toggle("nav-focus", k === i));
+  entries[i].scrollIntoView({ block: "nearest" });
+  state.nav = i;
+  el.inputHint.textContent = `↑↓ move · enter edit · esc back`;
+}
+
+function clearNav() {
+  if (state.nav < 0) return;
+  el.stream.querySelectorAll(".entry.nav-focus").forEach((n) => n.classList.remove("nav-focus"));
+  state.nav = -1;
+  el.inputHint.textContent = "";
+}
+
+function navEnter() {
+  const node = streamEntries()[state.nav];
+  const e = node && state.entries.get(node.dataset.id);
+  clearNav();
+  if (!e) return;
+  if (e.is_secret) openSecretEditor(node, e); else openEditor(node, e);
 }
 function closePeek() {                 // esc: dismiss the peek entirely
   clearPeek();
@@ -1107,7 +1128,7 @@ function keyListHtml() {
     [`clear it + enter`, "delete it"],
     [`${MOD}+z`, "undo the last save / delete"],
     // browsing the peek (the as-you-type matches)
-    [`↑`, "browse recent notes (from an empty box)"],
+    [`↑`, "step up through your notes (from an empty box)"],
     [`${MOD}+↑`, "browse the peek"],
     [`↑ / ↓`, "move through / leave the peek"],
     [`enter`, "open the focused match"],
@@ -1411,6 +1432,7 @@ function toggleTheme() {
 // ---------------------------------------------------------------- wiring: compose
 el.compose.addEventListener("input", () => {
   dismissWelcome();                 // first keystroke clears the inline welcome
+  clearNav();                       // typing leaves stream-browse mode
   localStorage.setItem(DRAFT_KEY, el.compose.value);
   autoGrow();
   updateSlashMenu();                // "/" at line start opens the formatting menu
@@ -1429,6 +1451,20 @@ el.compose.addEventListener("keydown", (ev) => {
     if (ev.key === "ArrowUp") { ev.preventDefault(); s.focus = (s.focus - 1 + s.items.length) % s.items.length; renderSlash(); return; }
     if (ev.key === "Enter" || ev.key === "Tab") { ev.preventDefault(); chooseSlash(s.focus); return; }
     if (ev.key === "Escape") { ev.preventDefault(); closeSlash(); return; }
+  }
+
+  // Walking the stream with ↑ (started from an empty box): ↑ older, ↓ newer, enter
+  // edits the highlighted note, esc back to the box. Any typed key exits and types.
+  if (state.nav >= 0) {
+    if (ev.key === "ArrowUp") { ev.preventDefault(); setNav(state.nav + 1); return; }
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      if (state.nav === 0) { clearNav(); focusComposeEnd(); } else setNav(state.nav - 1);
+      return;
+    }
+    if (ev.key === "Enter") { ev.preventDefault(); navEnter(); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); clearNav(); focusComposeEnd(); return; }
+    if (ev.key.length === 1 || ev.key === "Backspace") clearNav();   // typing exits, then types
   }
 
   const p = state.peek;
@@ -1468,8 +1504,8 @@ el.compose.addEventListener("keydown", (ev) => {
     if (p.matches.length) { ev.preventDefault(); enterPeek(); return; }
     // peek not currently up (e.g. just backed out of an edit): re-summon it for the draft
     if (hasGhostableText()) { ev.preventDefault(); fireGhost(true); return; }
-    // empty box: browse recent notes, newest first (↑ again steps further back)
-    if (!el.compose.value) { ev.preventDefault(); browseRecent(); return; }
+    // empty box: step into the stream at the newest note (↑ again walks up)
+    if (!el.compose.value) { ev.preventDefault(); setNav(0); return; }
   }
   if (ev.key === "Escape" && p.matches.length) { ev.preventDefault(); closePeek(); return; }
   if (ev.key === "Enter") {
