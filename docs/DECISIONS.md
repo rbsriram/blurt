@@ -866,24 +866,24 @@ broken `↑` afterward. New model:
   `↑` is only bound when the box is empty, so the two never collide. Cheatsheet updated in the same change.
 - Shipped in v1.4.0.
 
-### 57. Today surface: near-dated notes resurface on open (CTO, experiment)
+### 57. "Coming up": upcoming dated notes, summoned on demand (CTO, owner feedback)
 - The append-only stream's one real weakness: a commitment you dated days ago sinks below newer notes and
   you never see it again unless you search. For the owner (ADHD), that's the failure mode that matters.
-  The counterweight is resurfacing, not organizing: show what's due/near the moment the app opens.
-- **What it is:** on open, a compact "coming up" card sits just above the input (a new `#today` slot, in
-  the peek's spot in the layout) listing active notes whose frozen date lands in a window a week back to a
-  week ahead, soonest first. Each row is the date label + a snippet; clicking it reveals that note in the
-  stream (scroll + the shared `focus-flash`), the stream stays the single place you edit. New endpoint
-  `GET /api/radar` reuses the existing `entries_in_ranges` date machinery; the window is computed from the
-  server's `date.today()` and returned so the UI labels overdue vs upcoming against the same day.
-- **Glance-only, gets out of the way:** it shows only on a settled pad (not first-run, not while a draft
-  sits in the box), collapses on the first keystroke, and a `×` dismisses it for the session. It never
-  delays capture and never occupies the input area once you start typing.
-- **NOT a task app (holds the line from #54):** it has no done-state, no reminders, no notifications. It
-  only re-reads dates already frozen at capture and makes them visible. The boundary stays: a search/recall
-  enhancer, never a to-do list. The week-back/week-ahead window keeps stale old dates sunk.
-- **No cheatsheet line, on purpose:** it has no keystroke. The `?` cheatsheet is strictly a keys +
-  formatting table; automatic surfaces (the peek, the date chips) aren't documented there either, and the
-  card is self-labeled ("coming up") and self-evident. A prose blurb would be exactly the cute UI text we
-  avoid. Logged here so the omission is a decision, not a stale-doc miss.
+  The counterweight is resurfacing, not organizing.
+- **First cut (rejected) showed it automatically on every open, with a week-back-to-week-ahead window.**
+  Owner's feedback killed both halves: an always-on list "becomes so huge you are lost," and a backward
+  window surfaces stale things ("call plumber yesterday, the damn thing is already old") which reads like
+  the nagging to-do list we refuse to be. Lesson logged so we don't rebuild it that way.
+- **What it is now:** summoned with the `/upcoming` command (in the `/` menu like `/secret`), never shown
+  on its own. A compact "coming up" card appears just above the input (the `#today` slot) listing active
+  notes dated **today or later**, soonest first, capped at 15. Keyboard-first: `↑↓` move, `enter` reveals
+  the focused note in the stream (scroll + shared `focus-flash`, the stream stays the one edit surface),
+  `esc` or any keystroke closes. Click also works. New `GET /api/radar` reuses `entries_in_ranges`.
+- **Forward-only on purpose:** overdue/past dates are excluded, so the list can never fill with things
+  you've already passed; the cap keeps it short. The window is computed from the server's `date.today()`,
+  returned so the UI labels relative days against the same day.
+- **NOT a task app (holds the line from #54):** no done-state, no reminders, no notifications. It only
+  re-reads dates frozen at capture and makes them visible. A recall enhancer, never a to-do list.
+- **Discoverability via the `/` menu, not the cheatsheet:** it's a command, so it self-documents in the
+  `/` menu exactly like `/secret` (which also isn't in the `?` cheatsheet). No cute prose blurb.
 - Experiment on `exp/today-surface`, pending owner test in the dev app.

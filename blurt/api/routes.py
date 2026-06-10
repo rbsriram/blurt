@@ -8,7 +8,7 @@ in single-digit milliseconds.
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -105,27 +105,20 @@ async def list_entries(
     return {"entries": _db(request).list_entries(limit=limit, offset=offset)}
 
 
-# How far back/ahead the Today surface looks. A week each way: recently-overdue
-# commitments resurface, the week ahead is in view, older dated notes stay sunk.
-_RADAR_BACK = timedelta(days=7)
-_RADAR_AHEAD = timedelta(days=7)
-
-
 @router.get("/radar")
-async def radar(request: Request, limit: int = Query(12, ge=1, le=50)):
-    """Notes whose frozen date lands in the near window, soonest first.
+async def radar(request: Request, limit: int = Query(15, ge=1, le=50)):
+    """Upcoming dated notes: active notes dated today or later, soonest first, capped.
 
-    Powers the Today surface: dated notes resurface on open so a commitment you wrote
-    days ago does not sink in the stream. Pure resurfacing, NOT a task list (no done
-    state, no reminders); it only reads the dates already frozen at capture. See
-    DECISIONS #54 and #57. `today` is the server's date, so the UI labels overdue vs
-    upcoming against the same day the window was computed from (no browser drift).
+    Powers the on-demand "coming up" surface (the `/upcoming` command). Forward-only on
+    purpose: overdue/past dates are excluded so the list can never fill with stale things
+    you have already passed, and the cap keeps it short, so it never becomes a wall you
+    get lost in. Pure resurfacing of dates frozen at capture, NOT a task list (no done
+    state, no reminders); see DECISIONS #54 and #57. `today` is the server's date,
+    returned so the UI labels relative days against the same day.
     """
     today = date.today()
-    start = (today - _RADAR_BACK).isoformat()
-    end = (today + _RADAR_AHEAD).isoformat()
     return {
-        "entries": _db(request).entries_in_ranges([(start, end)], limit),
+        "entries": _db(request).entries_in_ranges([(today.isoformat(), "9999-12-31")], limit),
         "today": today.isoformat(),
     }
 

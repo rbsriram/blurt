@@ -246,6 +246,8 @@ const state = {
   // the peek: matches is the ranked active list; focus is -1 (visible, unfocused)
   // or an index into matches (browsing). Editing happens in the stream, not here.
   peek: { matches: [], focus: -1, query: "" },
+  // "coming up" card, summoned by /upcoming: open + the upcoming items + the focused row.
+  radar: { open: false, items: [], focus: 0 },
   search: { items: [], focus: -1, query: "" },
   nav: -1,   // ↑-from-empty stream browse: index into stream entries (0 = newest), -1 = off
 
@@ -525,21 +527,25 @@ el.stream.addEventListener("scroll", () => {
   if (distFromTop < 600) loadStream(false);
 });
 
-// ---------------------------------------------------------------- today surface
-// On open, dated notes whose day is near (a week back to a week ahead) resurface in a
-// compact card just above the input, so a commitment written days ago doesn't sink in
-// the stream. Glance-only: it's pure resurfacing (no done-state, no reminders), it
-// collapses once you start typing, and a dismiss hides it for the session. See
-// DECISIONS #57. Clicking an item reveals the note in the stream, its single edit home.
-const RADAR_DISMISS_KEY = "blurt-radar-dismissed";
-
-async function renderRadar() {
-  if (sessionStorage.getItem(RADAR_DISMISS_KEY)) return;
+// ---------------------------------------------------------------- coming up (on demand)
+// Summoned with the `/upcoming` command, never shown automatically. A compact card just
+// above the input lists upcoming dated notes (today or later, soonest first, capped), so
+// a commitment you wrote days ago doesn't stay sunk. Forward-only: nothing overdue, so it
+// can't grow into a stale wall. Keyboard-first: ↑↓ move, enter reveals the note in the
+// stream (its single edit home), esc/typing closes. Pure resurfacing, not a task list.
+// See DECISIONS #57.
+async function showRadar() {
   let data;
   try { data = await api.get("/api/radar"); } catch { return; }
   const items = (data?.entries || []).filter((e) => !e.is_secret);
-  if (!items.length) { hideRadar(); return; }
+  if (!items.length) { closeRadar(); flashHint("nothing coming up"); focusComposeEnd(); return; }
+  state.radar = { open: true, items, focus: 0 };
+  buildRadar();
+  el.today.hidden = false;
+}
 
+function buildRadar() {
+  const r = state.radar;
   el.today.innerHTML = "";
   const head = document.createElement("div");
   head.className = "today-head";
@@ -548,14 +554,14 @@ async function renderRadar() {
   const dismiss = document.createElement("button");
   dismiss.className = "today-dismiss";
   dismiss.textContent = "×";
-  dismiss.title = "hide until next launch";
-  dismiss.addEventListener("click", () => hideRadar(true));
+  dismiss.title = "close (esc)";
+  dismiss.addEventListener("mousedown", (ev) => { ev.preventDefault(); closeRadar(); focusComposeEnd(); });
   head.append(title, dismiss);
   el.today.appendChild(head);
 
-  for (const e of items) {
+  r.items.forEach((e, i) => {
     const row = document.createElement("button");
-    row.className = "today-item";
+    row.className = "today-item" + (i === r.focus ? " focused" : "");
     const when = document.createElement("span");
     when.className = "today-when";
     when.textContent = e.dates?.length ? fmtDate(e.dates[0]) : "";
@@ -563,16 +569,16 @@ async function renderRadar() {
     text.className = "today-text";
     text.textContent = snippet(e, 80);
     row.append(when, text);
-    row.addEventListener("click", () => revealEntry(e.id));
+    // mousedown + preventDefault so the compose box keeps focus (the keyboard flow)
+    row.addEventListener("mousedown", (ev) => { ev.preventDefault(); closeRadar(); revealEntry(e.id); });
     el.today.appendChild(row);
-  }
-  el.today.hidden = false;
+  });
 }
 
-function hideRadar(remember = false) {
+function closeRadar() {
+  state.radar = { open: false, items: [], focus: 0 };
   el.today.hidden = true;
   el.today.innerHTML = "";
-  if (remember) sessionStorage.setItem(RADAR_DISMISS_KEY, "1");
 }
 
 // Bring a note into view in the stream and flash it. The note may be older than what's
@@ -637,6 +643,7 @@ const SLASH_ITEMS = [
   { label: "code block", hint: "```",   keys: "code codeblock pre block",            insert: "```\n\n```\n", caret: 4 },
   { label: "divider",    hint: "---",   keys: "divider rule line hr separator",      insert: "---\n" },
   { label: "secret",     hint: "encrypted", keys: "secret password credential pwd pin key lock", action: "secret" },
+  { label: "coming up",  hint: "dated notes ahead", keys: "upcoming coming soon agenda due next dates radar", action: "upcoming" },
 ];
 
 function updateSlashMenu() {
@@ -682,12 +689,12 @@ function chooseSlash(i) {
   const it = state.slash.items[i];
   if (!it) return;
   const ta = el.compose;
-  if (it.action === "secret") {                 // drop the "/secret" and open the form
+  if (it.action === "secret" || it.action === "upcoming") {   // drop the "/cmd", run the action
     ta.setRangeText("", state.slash.lineStart, ta.selectionStart, "end");
     closeSlash();
     autoGrow();
     localStorage.setItem(DRAFT_KEY, ta.value);
-    openSecretForm();
+    if (it.action === "secret") openSecretForm(); else showRadar();
     return;
   }
   ta.setRangeText(it.insert, state.slash.lineStart, ta.selectionStart, "end");
@@ -1494,7 +1501,7 @@ function toggleTheme() {
 el.compose.addEventListener("input", () => {
   dismissWelcome();                 // first keystroke clears the inline welcome
   clearNav();                       // typing leaves stream-browse mode
-  hideRadar();                      // typing collapses the today surface (back on next launch)
+  closeRadar();                     // typing closes the summoned "coming up" card
   localStorage.setItem(DRAFT_KEY, el.compose.value);
   autoGrow();
   updateSlashMenu();                // "/" at line start opens the formatting menu
@@ -1513,6 +1520,17 @@ el.compose.addEventListener("keydown", (ev) => {
     if (ev.key === "ArrowUp") { ev.preventDefault(); s.focus = (s.focus - 1 + s.items.length) % s.items.length; renderSlash(); return; }
     if (ev.key === "Enter" || ev.key === "Tab") { ev.preventDefault(); chooseSlash(s.focus); return; }
     if (ev.key === "Escape") { ev.preventDefault(); closeSlash(); return; }
+  }
+
+  // The summoned "coming up" card owns the arrows/Enter/Esc while it's open: ↑↓ move,
+  // enter reveals the focused note in the stream, esc closes, any typed key dismisses.
+  if (state.radar.open) {
+    const r = state.radar;
+    if (ev.key === "ArrowUp") { ev.preventDefault(); r.focus = Math.max(0, r.focus - 1); buildRadar(); return; }
+    if (ev.key === "ArrowDown") { ev.preventDefault(); r.focus = Math.min(r.items.length - 1, r.focus + 1); buildRadar(); return; }
+    if (ev.key === "Enter") { ev.preventDefault(); const it = r.items[r.focus]; closeRadar(); if (it) revealEntry(it.id); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); closeRadar(); focusComposeEnd(); return; }
+    if (ev.key.length === 1 || ev.key === "Backspace") closeRadar();   // typing dismisses, then types
   }
 
   // Walking the stream with ↑ (started from an empty box): ↑ older, ↓ newer, enter
@@ -1673,10 +1691,6 @@ focusComposeEnd();
 initErase();
 refreshSemanticStatus();   // self-schedules its next poll (brisk while degraded, relaxed when healthy)
 loadStream(true).then(() => {
-  const hasNotes = !!el.stream.querySelector(".entry");
-  const blank = !hasNotes && !el.compose.value.trim();
+  const blank = !el.stream.querySelector(".entry") && !el.compose.value.trim();
   blank ? newPadIntro() : brandFlash();
-  // Resurface near-dated notes on open, but only on a settled pad: not the blank/first
-  // run, and not while a draft is sitting in the box (the first keystroke hides it anyway).
-  if (hasNotes && !el.compose.value.trim()) renderRadar();
 });
