@@ -889,4 +889,18 @@ broken `↑` afterward. New model:
   re-reads dates frozen at capture and makes them visible. A recall enhancer, never a to-do list.
 - **Discoverability via the `/` menu, not the cheatsheet:** it's a command, so it self-documents in the
   `/` menu exactly like `/secret` (which also isn't in the `?` cheatsheet). No cute prose blurb.
-- Experiment on `exp/today-surface`, pending owner test in the dev app.
+- Shipped in v1.5.0.
+
+### 58. Monochrome ink palette + a calmer cheatsheet (owner)
+- The accent was a slate blue (`#41698f`) on warm paper (`#f1ece3`). Owner never liked the pairing and
+  wanted "the same colour the text is captured in, kept subtle", i.e. no hue at all.
+- **Palette is now monochrome, app-wide:** `--accent` is the text ink itself (`#1a1a1a` light, `#e8e6e0`
+  dark), and `--selection` / `--highlight` / the one stray glow are neutral greys. Everything that was
+  blue (links, date chips, the peek, focus bars, checked boxes, cheatsheet keys) is now the same ink as
+  the writing. Affordances survive without colour: links keep their underline, focus keeps its left bar,
+  checked boxes keep their fill. The only sanctioned non-ink colour is a *functional status* cue (e.g. the
+  "missed" date tint from #57), kept deliberately as the lone exception.
+- **Cheatsheet slimmed:** it was a 900px slab (48px padding, 16px type, a four-column grid, a heavy
+  shadow), too big and in-your-face. Now a ~440px single-column card with smaller type, less padding, and
+  a soft shadow. Same content, a quarter of the visual weight, reads as a quiet reference, not a wall.
+- Shipped in v1.5.0.

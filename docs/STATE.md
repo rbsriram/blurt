@@ -5,7 +5,7 @@ _A living snapshot of where Blurt is. Update it as things change._
 ## Where it is
 
 Blurt is **shipped: public, open source (MIT) at
-[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.4.0.** Install is
+[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.5.0.** Install is
 `pipx install git+https://github.com/rbsriram/blurt` then `blurt` (see the README);
 a `blurt/cli.py` launcher checks Ollama, starts the server, and opens Blurt in its
 own native desktop window (`blurt/desktop.py`, via pywebview; `BLURT_BROWSER=1`
@@ -29,9 +29,11 @@ tested, and linted.
   index, incremental background indexing, model kept warm, localhost bind, DB file
   locked to `chmod 600`, and an always-current `scratchpad.md` mirror.
 - **Front end:** bottom-pinned capture, the keyboard-browsable peek, `↑`-from-an-empty-box
-  stream navigation (walk recent notes, enter to edit; see DECISIONS #56), in-place note
+  stream navigation (walk recent notes, enter to edit; see DECISIONS #56), a `/upcoming`
+  "coming up" surface (summon upcoming dated notes, missed ones tinted; #57), in-place note
   editing, arrow-navigable search, checklists, list auto-continuation, a `/`
-  formatting menu, auto-linked URLs, Markdown export, and a `?` cheatsheet.
+  formatting menu, auto-linked URLs, Markdown export, and a `?` cheatsheet. The palette is
+  monochrome ink (no accent colour) and the cheatsheet is a slim card (#58).
 - **Date-aware notes:** date phrases ("tomorrow", "next friday", "Jun 1", "14/2/2024")
   are frozen to absolute days at capture and shown as a subtle, clickable label; you
   can search by date ("tomorrow", "next week", "2nd feb") and a Settings toggle picks
