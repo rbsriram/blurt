@@ -7,10 +7,10 @@
   --fg: #1a1a1a;
   --muted: rgba(26, 26, 26, 0.45);
   --faint: rgba(26, 26, 26, 0.08);
-  --accent: #41698f;        /* slate blue-grey (was burnt orange) — calm, cohesive with --highlight */
-  --selection: rgba(65, 105, 143, 0.16);
-  /* subtle cool blue-grey fill for hover / focused peek line / edit box (not orange) */
-  --highlight: rgba(40, 70, 110, 0.06);
+  --accent: #1a1a1a;        /* monochrome: same ink as the captured text, no hue (owner) */
+  --selection: rgba(26, 26, 26, 0.12);
+  /* neutral grey fill for hover / focused peek line / edit box (no blue tint) */
+  --highlight: rgba(26, 26, 26, 0.05);
   --panel: #ffffff;
   --mono: "JetBrains Mono", "iA Writer Mono S", "SF Mono", "Menlo", "Courier Prime", "Courier New", monospace;
   --reveal: 150ms ease;
@@ -21,9 +21,9 @@ body.dark {
   --fg: #e8e6e0;
   --muted: rgba(232, 230, 224, 0.45);
   --faint: rgba(255, 255, 255, 0.08);
-  --accent: #88b0d4;        /* slate blue-grey, lighter for dark mode */
-  --selection: rgba(136, 176, 212, 0.18);
-  --highlight: rgba(140, 170, 210, 0.07);
+  --accent: #e8e6e0;        /* monochrome: same light ink as the text in dark mode */
+  --selection: rgba(232, 230, 224, 0.14);
+  --highlight: rgba(255, 255, 255, 0.05);
   --panel: #1a1a1a;
 }
 
@@ -420,7 +420,7 @@ body {
    draws the eye, off entirely for anyone who prefers reduced motion. */
 @keyframes ollama-breathe {
   0%, 100% { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16); }
-  50%      { box-shadow: 0 2px 14px rgba(0, 0, 0, 0.20), 0 0 14px 1px rgba(120, 165, 210, 0.18); }
+  50%      { box-shadow: 0 2px 14px rgba(0, 0, 0, 0.20), 0 0 14px 1px rgba(120, 120, 120, 0.18); }
 }
 @keyframes ollama-pulse {
   0%, 100% { opacity: 0.45; }
@@ -505,25 +505,24 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 25;
-  width: min(900px, calc(100vw - 40px));
-  max-height: calc(100vh - 56px);
+  width: min(440px, calc(100vw - 40px));
+  max-height: min(72vh, calc(100vh - 56px));
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--faint);
-  border-radius: 14px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.30);
-  padding: 40px 48px;
-  font-size: 16px;
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  padding: 22px 24px;
+  font-size: 14px;
   color: var(--fg);
   animation: sheetfade 180ms ease both;
 }
 #cheatsheet[hidden] { display: none; }
 @keyframes sheetfade { from { opacity: 0; transform: translate(-50%, calc(-50% + 6px)); } }
-#cheatsheet h4 { margin: 6px 0 18px; font-size: 13px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
-#cheatsheet h4 + dl { margin-bottom: 30px; }   /* breathing room between the two sections */
-/* two columns of pairs on wide screens so it fills the space instead of one long list */
-#cheatsheet dl { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 14px 28px; margin: 0; align-items: baseline; }
-@media (max-width: 620px) { #cheatsheet dl { grid-template-columns: max-content 1fr; } }
+#cheatsheet h4 { margin: 2px 0 11px; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+#cheatsheet h4 + dl { margin-bottom: 20px; }   /* breathing room between the two sections */
+/* a single calm column of key/description pairs, not a space-filling grid */
+#cheatsheet dl { display: grid; grid-template-columns: max-content 1fr; gap: 9px 18px; margin: 0; align-items: baseline; }
 #cheatsheet dt { color: var(--accent); white-space: nowrap; }
 #cheatsheet dd { margin: 0; color: var(--fg); opacity: 0.82; }
 kbd {
