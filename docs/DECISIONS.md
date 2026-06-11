@@ -865,3 +865,20 @@ broken `↑` afterward. New model:
 - **Coexists with the peek:** `Cmd/Ctrl+↑` still browses the peek's semantic matches while typing; bare
   `↑` is only bound when the box is empty, so the two never collide. Cheatsheet updated in the same change.
 - Shipped in v1.4.0.
+
+<!-- #57 is the "coming up" surface, on the exp/today-surface branch; numbered ahead to avoid a
+     collision when both experiments merge. -->
+
+### 58. Monochrome ink palette + a calmer cheatsheet (owner)
+- The accent was a slate blue (`#41698f`) on warm paper (`#f1ece3`). Owner never liked the pairing and
+  wanted "the same colour the text is captured in, kept subtle", i.e. no hue at all.
+- **Palette is now monochrome, app-wide:** `--accent` is the text ink itself (`#1a1a1a` light, `#e8e6e0`
+  dark), and `--selection` / `--highlight` / the one stray glow are neutral greys. Everything that was
+  blue (links, date chips, the peek, focus bars, checked boxes, cheatsheet keys) is now the same ink as
+  the writing. Affordances survive without colour: links keep their underline, focus keeps its left bar,
+  checked boxes keep their fill. The only sanctioned non-ink colour is a *functional status* cue (e.g. the
+  "missed" date tint from #57), kept deliberately as the lone exception.
+- **Cheatsheet slimmed:** it was a 900px slab (48px padding, 16px type, a four-column grid, a heavy
+  shadow), too big and in-your-face. Now a ~440px single-column card with smaller type, less padding, and
+  a soft shadow. Same content, a quarter of the visual weight, reads as a quiet reference, not a wall.
+- Experiment on `exp/calm-cheatsheet`, pending owner test in the dev app.
