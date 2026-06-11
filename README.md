@@ -2,7 +2,7 @@
 
 **just type. it remembers.**
 
-![Blurt: type a thought, and it surfaces the note you already wrote](docs/demo.gif)
+![Blurt: start a note, it surfaces the ones you already wrote, and you edit that one instead of duplicating](docs/demo.gif)
 
 You just type. One endless stream, newest at the bottom, no folders, no tags, no
 "where did I put that." The twist: as you write, Blurt is quietly reading your
