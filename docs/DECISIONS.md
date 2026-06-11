@@ -879,9 +879,12 @@ broken `↑` afterward. New model:
   notes dated **today or later**, soonest first, capped at 15. Keyboard-first: `↑↓` move, `enter` reveals
   the focused note in the stream (scroll + shared `focus-flash`, the stream stays the one edit surface),
   `esc` or any keystroke closes. Click also works. New `GET /api/radar` reuses `entries_in_ranges`.
-- **Forward-only on purpose:** overdue/past dates are excluded, so the list can never fill with things
-  you've already passed; the cap keeps it short. The window is computed from the server's `date.today()`,
-  returned so the UI labels relative days against the same day.
+- **Mostly forward, with a 2-day grace back (owner):** the list is notes dated today or later, plus a
+  tight 2-day backward window so something you *just* missed (yesterday or the day before) still catches
+  your eye. Older overdue stays sunk, so it can't fill with things you long passed; the cap keeps it
+  short. Missed rows (dated before today) get a quiet warm tint (`--warn`) on their date so "missed"
+  reads differently from "upcoming" at a glance, no alarm colors, no extra words. The window is computed
+  from the server's `date.today()`, returned so the UI marks missed vs upcoming against the same day.
 - **NOT a task app (holds the line from #54):** no done-state, no reminders, no notifications. It only
   re-reads dates frozen at capture and makes them visible. A recall enhancer, never a to-do list.
 - **Discoverability via the `/` menu, not the cheatsheet:** it's a command, so it self-documents in the
