@@ -539,7 +539,8 @@ async function showRadar() {
   try { data = await api.get("/api/radar"); } catch { return; }
   const items = (data?.entries || []).filter((e) => !e.is_secret);
   if (!items.length) { closeRadar(); flashHint("nothing coming up"); focusComposeEnd(); return; }
-  state.radar = { open: true, items, focus: 0 };
+  // Keep the server's "today" so a row dated before it can be marked missed (no clock drift).
+  state.radar = { open: true, items, focus: 0, today: data.today };
   buildRadar();
   el.today.hidden = false;
 }
@@ -561,7 +562,8 @@ function buildRadar() {
 
   r.items.forEach((e, i) => {
     const row = document.createElement("button");
-    row.className = "today-item" + (i === r.focus ? " focused" : "");
+    const missed = e.dates?.length && e.dates[0] < r.today;   // ISO strings compare correctly
+    row.className = "today-item" + (i === r.focus ? " focused" : "") + (missed ? " past" : "");
     const when = document.createElement("span");
     when.className = "today-when";
     when.textContent = e.dates?.length ? fmtDate(e.dates[0]) : "";

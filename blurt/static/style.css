@@ -11,6 +11,7 @@
   --selection: rgba(65, 105, 143, 0.16);
   /* subtle cool blue-grey fill for hover / focused peek line / edit box (not orange) */
   --highlight: rgba(40, 70, 110, 0.06);
+  --warn: #a86a3d;          /* muted warm amber: a quiet "missed it" cue, no alarm */
   --panel: #ffffff;
   --mono: "JetBrains Mono", "iA Writer Mono S", "SF Mono", "Menlo", "Courier Prime", "Courier New", monospace;
   --reveal: 150ms ease;
@@ -24,6 +25,7 @@ body.dark {
   --accent: #88b0d4;        /* slate blue-grey, lighter for dark mode */
   --selection: rgba(136, 176, 212, 0.18);
   --highlight: rgba(140, 170, 210, 0.07);
+  --warn: #c9a06a;          /* lighter warm amber for dark mode */
   --panel: #1a1a1a;
 }
 
@@ -315,6 +317,8 @@ body {
   flex-shrink: 0;
   min-width: 56px;
 }
+/* a missed item (dated before today, within the grace window): warm-tint its date */
+.today-item.past .today-when { color: var(--warn); opacity: 1; }
 .today-text {
   opacity: 0.7;
   white-space: nowrap;

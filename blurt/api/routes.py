@@ -8,7 +8,7 @@ in single-digit milliseconds.
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -105,20 +105,28 @@ async def list_entries(
     return {"entries": _db(request).list_entries(limit=limit, offset=offset)}
 
 
+# A short grace window back, so something you just missed (yesterday or the day before)
+# still surfaces. Kept tight on purpose: a longer backward window fills the list with
+# stale things you have already passed, which is the always-on cut we rejected (#57).
+_RADAR_GRACE = timedelta(days=2)
+
+
 @router.get("/radar")
 async def radar(request: Request, limit: int = Query(15, ge=1, le=50)):
-    """Upcoming dated notes: active notes dated today or later, soonest first, capped.
+    """Upcoming dated notes (plus a 2-day grace back), soonest first, capped.
 
-    Powers the on-demand "coming up" surface (the `/upcoming` command). Forward-only on
-    purpose: overdue/past dates are excluded so the list can never fill with stale things
-    you have already passed, and the cap keeps it short, so it never becomes a wall you
-    get lost in. Pure resurfacing of dates frozen at capture, NOT a task list (no done
-    state, no reminders); see DECISIONS #54 and #57. `today` is the server's date,
-    returned so the UI labels relative days against the same day.
+    Powers the on-demand "coming up" surface (the `/upcoming` command). Mostly forward:
+    it lists notes dated today or later, plus anything from the last two days so a thing
+    you just missed still catches your eye. Older overdue stays sunk, so the list can
+    never fill with stale things you've long passed, and the cap keeps it short. Pure
+    resurfacing of dates frozen at capture, NOT a task list (no done state, no reminders);
+    see DECISIONS #54 and #57. `today` is the server's date, returned so the UI can mark
+    missed (before today) vs upcoming against the same day.
     """
     today = date.today()
+    start = (today - _RADAR_GRACE).isoformat()
     return {
-        "entries": _db(request).entries_in_ranges([(today.isoformat(), "9999-12-31")], limit),
+        "entries": _db(request).entries_in_ranges([(start, "9999-12-31")], limit),
         "today": today.isoformat(),
     }
 
