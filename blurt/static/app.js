@@ -80,6 +80,12 @@ function md(raw) {
   const out = [];
   let i = 0;
   let cbIndex = 0;   // 0-based ordinal of each checkbox, top-to-bottom; the server toggles by this
+  // A line starts a table when it has cells and the NEXT line is a |---|---| separator.
+  // Used to render the table AND to stop paragraph-grouping from swallowing one that
+  // sits directly under a label line (e.g. "Q3 numbers") with no blank line between.
+  const isTableStart = (k) =>
+    lines[k].includes("|") && k + 1 < lines.length &&
+    /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[k + 1]) && lines[k + 1].includes("-");
   while (i < lines.length) {
     const line = lines[i];
     if (/^```/.test(line.trim())) {
@@ -91,7 +97,7 @@ function md(raw) {
     const h = line.match(/^(#{1,3})\s+(.*)$/);
     if (h) { const n = h[1].length; out.push(`<h${n}>${inlineMd(h[2])}</h${n}>`); i++; continue; }
     if (/^(-{3,}|\*{3,})$/.test(line.trim())) { out.push("<hr/>"); i++; continue; }
-    if (line.includes("|") && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes("-")) {
+    if (isTableStart(i)) {
       const cells = (r) => r.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
       const head = cells(line); i += 2;
       const rows = [];
@@ -126,7 +132,7 @@ function md(raw) {
     }
     if (line.trim() === "") { i++; continue; }
     const buf = [line]; i++;
-    while (i < lines.length && lines[i].trim() !== "" &&
+    while (i < lines.length && lines[i].trim() !== "" && !isTableStart(i) &&
            !/^(#{1,3}\s|```|&gt;\s?|\s*([-*]|\d+\.)\s+)/.test(lines[i]) &&
            !/^(-{3,}|\*{3,})$/.test(lines[i].trim())) { buf.push(lines[i]); i++; }
     out.push(`<p>${inlineMd(buf.join("<br/>"))}</p>`);
