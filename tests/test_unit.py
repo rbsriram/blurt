@@ -144,17 +144,17 @@ class _DeadEmbedder:
 def test_query_returns_exact_matches_when_embeddings_fail(db):
     # Invariant: exact-text search is instant regardless of Ollama. A semantic failure
     # must never sink the query and discard the lexical hits it already had.
-    db.add_entry("my tailscale ip is 203.0.113.10 for my mac mini")
+    db.add_entry("the spare key is under the blue flowerpot")
     db.add_entry("tomorrow meeting with david at 3 pm")
-    result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).query("tailscale"))
+    result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).query("flowerpot"))
     contents = [e["content"] for e in result["entries"]]
-    assert any("tailscale" in c for c in contents)
+    assert any("flowerpot" in c for c in contents)
 
 
 def test_suggest_is_empty_when_embeddings_fail(db):
     # The peek is purely semantic, so Ollama being down yields nothing, never a 500.
-    db.add_entry("my tailscale ip is 203.0.113.10 for my mac mini")
-    result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).suggest("my tailscale is down"))
+    db.add_entry("the spare key is under the blue flowerpot")
+    result = asyncio.run(Retriever(db, _DeadEmbedder(), Settings()).suggest("where did i leave the spare key"))
     assert result == {"match": None, "score": 0.0, "more": 0, "matches": []}
 
 
