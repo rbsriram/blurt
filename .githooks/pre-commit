@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-commit guard: refuse to commit personal info or secrets.
+#
+# Scans only the lines this commit ADDS. Blocks on Tailscale/CGNAT IPs (the kind
+# that leaked once), real email addresses, and common key/token shapes. Activated
+# per-clone via `git config core.hooksPath .githooks` (startup.sh does this).
+#
+# Genuine false positive? Bypass once:  BLURT_ALLOW_SECRETS=1 git commit ...
+set -u
+
+[ "${BLURT_ALLOW_SECRETS:-0}" = "1" ] && exit 0
+
+added="$(git diff --cached --unified=0 --no-color | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+[ -z "$added" ] && exit 0
+
+hits=""
+add_hit() { [ -n "$2" ] && hits="${hits}
+  ${1}:
+$(printf '%s' "$2" | sed 's/^/    /')"; }
+
+# 1. Tailscale / CGNAT addresses (the 100.64/10 range). Loopback and RFC1918 LAN IPs are
+#    intentionally allowed so 127.0.0.1 / 192.168.x in config never trip the guard.
+add_hit "Tailscale/CGNAT IP" "$(printf '%s\n' "$added" \
+  | grep -oE '\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b' | sort -u || true)"
+
+# 2. Email addresses, except GitHub noreply and the reserved example.* docs domains.
+add_hit "Email address" "$(printf '%s\n' "$added" \
+  | grep -oiE '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' \
+  | grep -viE '@users\.noreply\.github\.com|@example\.(com|org|net)' | sort -u || true)"
+
+# 3. Common secret/key shapes (real tokens, not the short dummies in test fixtures).
+add_hit "Secret/key" "$(printf '%s\n' "$added" \
+  | grep -oE '(sk-[A-Za-z0-9]{16,}|gh[posru]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' | sort -u || true)"
+
+if [ -n "$hits" ]; then
+  printf '\n\033[31m✋ commit blocked\033[0m: this change looks like it adds personal info or a secret:\n' >&2
+  printf '%s\n\n' "$hits" >&2
+  printf 'Remove it, or if it is genuinely safe:  BLURT_ALLOW_SECRETS=1 git commit ...\n\n' >&2
+  exit 1
+fi
+exit 0

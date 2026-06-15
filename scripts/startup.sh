@@ -22,6 +22,10 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
   echo "  uncommitted changes: $changes file(s)"
   echo "  last commits:"
   git --no-pager log --oneline -3 2>/dev/null | sed 's/^/    /' || echo "    (no commits yet)"
+  # Activate the secret/PII pre-commit guard on this clone (idempotent).
+  if [ -d .githooks ] && [ "$(git config core.hooksPath || true)" != ".githooks" ]; then
+    git config core.hooksPath .githooks && ok "enabled secret-scanning pre-commit hook"
+  fi
 else
   warn "not a git repo yet (git init when ready to version)"
 fi
