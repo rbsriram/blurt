@@ -62,6 +62,14 @@ function peelTrailingPunct(url) {
   return m ? [m[1], m[2]] : [url, ""];
 }
 
+// A pasted image renders only if its URL is one of our own locally-stored files.
+// Anything else (remote, data:, javascript:) stays literal text, so a note can never
+// beacon out or smuggle in markup. Returns the <img> html, or null to leave it alone.
+function imageTag(alt, url) {
+  if (!/^\/api\/media\/[a-f0-9]{64}\.(png|jpg|gif|webp)$/.test(url)) return null;
+  return `<img src="${url}" alt="${alt}" loading="lazy" class="note-img"/>`;
+}
+
 function inlineMd(s) {
   // Split on `code spans` and format only the non-code parts, so a URL or ** inside
   // backticks stays literal. Keeping the delimiter keeps parts alternating text/code.
@@ -69,6 +77,9 @@ function inlineMd(s) {
     if (part.length >= 2 && part.startsWith("`") && part.endsWith("`")) {
       return `<code>${part.slice(1, -1)}</code>`;
     }
+    // Images before links so the leading `!` is consumed, not read as link text.
+    part = part.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,
+      (m, alt, url) => imageTag(alt, url) ?? m);
     part = part.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     part = part.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     return linkify(part);
@@ -1196,6 +1207,7 @@ function keyListHtml() {
     [`enter`, "save the note"],
     [`shift+enter`, "new line"],
     [`/`, "formatting menu (at line start)"],
+    [`paste`, "drop a copied image into the note"],
     [`${MOD}+k`, "store a secret (encrypted)"],
     [`${MOD}+f`, "search"],
     [`esc`, "back to typing (closes anything open)"],
@@ -1516,6 +1528,48 @@ el.compose.addEventListener("input", () => {
   if (state.peek.focus >= 0) { state.peek.focus = -1; renderPeek(); }  // typing resets peek focus
   scheduleGhost();
 });
+// Paste a screenshot or image: store it locally and drop a markdown ref where the
+// cursor is. Non-image pastes fall through to the textarea's normal text paste.
+el.compose.addEventListener("paste", (ev) => {
+  const items = ev.clipboardData?.items;
+  if (!items) return;
+  const image = [...items].find((it) => it.kind === "file" && it.type.startsWith("image/"));
+  if (!image) return;
+  ev.preventDefault();
+  const file = image.getAsFile();
+  if (file) uploadImage(file);
+});
+
+function insertAtCursor(ta, text) {
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  const pos = start + text.length;
+  ta.setSelectionRange(pos, pos);
+}
+
+async function uploadImage(file) {
+  const ta = el.compose;
+  // Optimistic placeholder so the paste feels instant; swapped for the real ref once
+  // stored (localhost write, near-instant), or removed if the upload is rejected.
+  const id = Math.random().toString(36).slice(2, 8);
+  const token = `(uploading image ${id}…)`;
+  insertAtCursor(ta, token);
+  ta.dispatchEvent(new Event("input"));
+  try {
+    const res = await fetch("/api/images", {
+      method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    if (!res.ok) throw new Error("upload failed");
+    const { url } = await res.json();
+    ta.value = ta.value.replace(token, `![](${url})`);
+  } catch {
+    ta.value = ta.value.replace(token, "");
+    flashHint("couldn't add that image");
+  }
+  ta.dispatchEvent(new Event("input"));  // resync draft/autogrow/ghost
+  ta.focus();
+}
+
 // Clicking away closes the slash menu (its items use mousedown+preventDefault, so
 // picking one doesn't blur and won't be lost).
 el.compose.addEventListener("blur", closeSlash);

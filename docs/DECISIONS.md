@@ -904,3 +904,26 @@ broken `↑` afterward. New model:
   shadow), too big and in-your-face. Now a ~440px single-column card with smaller type, less padding, and
   a soft shadow. Same content, a quarter of the visual weight, reads as a quiet reference, not a wall.
 - Shipped in v1.5.0.
+
+### 59. Paste a screenshot: store and render it locally, no OCR yet (CTO, owner ask)
+
+Owner: "I should be able to paste in things." Plain-text paste already worked (the compose box is a
+`<textarea>`; the native app's Edit menu wires Cmd+V through to the webview). The real gap was images.
+
+- **Scope = paste a screenshot, it stores locally and renders inline in the note.** Simplest thing that
+  serves the ask without bloating the scratchpad feeling.
+- **Stored on disk, not in SQLite.** Files live in `media/` beside the DB (internal, owner-only 0700/0600),
+  named by sha256 of their bytes so identical pastes dedupe and a name can never carry a path. Content-
+  addressing makes serving cacheable forever. `media/` sits beside the DB, not in the (possibly cloud-synced)
+  notes folder, so large binaries are never silently uploaded somewhere.
+- **Served localhost-only** at `/api/media/<hash>.<ext>`; the store rejects any name that is not
+  `<64-hex>.<ext>`, so the endpoint cannot be walked outside its directory. Type is sniffed from magic
+  bytes, not the client content-type. 20 MB cap.
+- **Rendered only for our own media URLs.** The escape-first markdown renderer gained `![alt](url)`, but
+  `imageTag` emits an `<img>` only when the URL matches `/api/media/<hash>.<ext>`. Remote, `data:`, and
+  `javascript:` srcs stay literal text, so a note can never beacon out (local-first) or inject markup (XSS).
+- **Deferred, on purpose.** No OCR yet, so a pasted image is viewable but not semantically searchable; that
+  is the roadmap "gate" (needs a local model), to revisit later.
+
+Tests: `tests/test_media.py` (accepts each image kind, dedup, owner-only perms, rejects non-images and
+RIFF-that-is-not-WEBP, blocks traversal/garbage names) plus a manual end-to-end round trip through the API.

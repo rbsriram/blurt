@@ -126,6 +126,13 @@ class Settings:
         return chosen if chosen in ("DMY", "MDY") else "DMY"
 
     @property
+    def media_dir(self) -> Path:
+        """Where pasted images live: beside the DB (internal), not in the notes folder.
+        Kept off any cloud-synced notes dir so large binaries are not silently uploaded,
+        and locked owner-only like the DB."""
+        return Path(self.db_path).parent / "media"
+
+    @property
     def static_dir(self) -> Path:
         return _ROOT / "static"
 

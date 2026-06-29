@@ -12,6 +12,7 @@ from datetime import date, timedelta
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from starlette.responses import FileResponse
 
 from ..config import set_date_order, set_notes_dir, settings
 from ..core import active_stream_markdown, render_stream_markdown
@@ -48,6 +49,10 @@ def _indexer(request: Request):
 
 def _retriever(request: Request):
     return request.app.state.retriever
+
+
+def _media(request: Request):
+    return request.app.state.media
 
 
 def _touch_mirror(request: Request) -> None:
@@ -401,6 +406,33 @@ def _is_newer(latest: str, current: str) -> bool:
         return _version_tuple(latest) > _version_tuple(current)
     except Exception:
         return False
+
+
+# --- images (pasted screenshots; stored and served locally only) -------
+
+@router.post("/images")
+async def upload_image(request: Request):
+    """Store a pasted image and return the URL to reference it by. The body is the
+    raw image bytes; the type is sniffed from the bytes, not trusted from the header.
+    Stays on this machine: the file is only ever served back over the localhost API."""
+    data = await request.body()
+    try:
+        name = _media(request).save(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"url": f"/api/media/{name}", "name": name}
+
+
+@router.get("/media/{name}")
+async def get_media(name: str, request: Request):
+    """Serve a stored image by its content-addressed name. The store rejects any name
+    that is not <hash>.<ext>, so this can never read outside the media dir."""
+    resolved = _media(request).resolve(name)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="not found")
+    path, media_type = resolved
+    # Content-addressed names are immutable, so the file can be cached hard.
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "max-age=31536000, immutable"})
 
 
 # --- test/dev only ------------------------------------------------------

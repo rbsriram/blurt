@@ -16,6 +16,7 @@ dist/
 blurt.db*
 scratchpad.md
 scratchpad.md.tmp
+media/
 
 # OS / editor
 .DS_Store

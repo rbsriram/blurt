@@ -511,6 +511,7 @@ body {
 .entry-body th, .entry-body td, .result-body th, .result-body td { border: 1px solid var(--faint); padding: 4px 10px; text-align: left; }
 .entry-body hr, .result-body hr { border: none; border-top: 1px solid var(--faint); margin: 0.7em 0; }
 .entry-body mark, .result-body mark { background: var(--selection); color: inherit; border-radius: 3px; padding: 0 2px; }
+.entry-body .note-img, .result-body .note-img { display: block; max-width: 100%; height: auto; margin: 0.4em 0; border-radius: 6px; border: 1px solid var(--faint); }
 
 /* --- search overlay (summoned, arrow-navigable) --- */
 #search-overlay {

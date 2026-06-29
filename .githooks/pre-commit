@@ -10,7 +10,10 @@ set -u
 
 [ "${BLURT_ALLOW_SECRETS:-0}" = "1" ] && exit 0
 
-added="$(git diff --cached --unified=0 --no-color | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+# Strip the leading "+" diff marker so the marker itself is never read as content.
+# Without this, the marker glues onto a decorator and the result reads as an email
+# local-part, so lines like the route/fixture decorators below trip a false positive.
+added="$(git diff --cached --unified=0 --no-color | grep -E '^\+' | grep -vE '^\+\+\+' | sed 's/^+//' || true)"
 [ -z "$added" ] && exit 0
 
 hits=""
