@@ -147,6 +147,37 @@ body {
 .date-chip:hover { opacity: 0.95; text-decoration: underline; }
 .result-date { margin-left: 8px; }
 
+/* A #tag in a note: it stays part of the prose (same size, muted ink, no pill) and
+   only admits it's clickable on hover, like the date chip. */
+.tag-chip {
+  color: var(--muted);
+  cursor: pointer;
+  transition: opacity var(--reveal);
+}
+.tag-chip:hover { color: var(--fg); text-decoration: underline; }
+
+/* grouped stream (/group): each project is a section, its tag as a quiet header */
+.tag-group { margin: 10px 0; }
+.tag-group-head {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0 4px;
+  border-bottom: 1px solid var(--faint);
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.tag-group-head:hover { color: var(--fg); }
+
+/* the "projects" card reuses the coming-up rows; the count sits faint at the right */
+.tag-count {
+  margin-left: auto;
+  color: var(--muted);
+  opacity: 0.6;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .entry.focus-flash { animation: flash 1.2s ease; }
 @keyframes flash {
   0% { background: var(--selection); }
@@ -527,6 +558,51 @@ body {
   font-style: italic;
 }
 
+
+/* --- reader (a project's notes, stitched into one chronological read) --- */
+#reader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 28;                       /* under search (30), so a search can open above it */
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(2px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 7vh 20px 20px;
+}
+#reader-overlay[hidden] { display: none; }
+#reader-panel {
+  width: 100%;
+  max-width: 720px;
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  padding: 18px 24px 24px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+}
+#reader-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--faint);
+}
+#reader-title { font-size: 15px; font-weight: 600; }
+#reader-tools { font-size: 12px; color: var(--muted); }
+#reader-copy { color: var(--accent); cursor: pointer; }
+#reader-copy:hover { text-decoration: underline; }
+#reader-body { overflow-y: auto; padding-top: 4px; }
+.reader-day {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 20px 0 6px;
+  text-transform: lowercase;
+}
+.reader-day:first-child { margin-top: 10px; }
+.reader-note { padding: 3px 0 9px; line-height: 1.6; }
 
 /* --- search overlay (summoned, arrow-navigable) --- */
 #search-overlay {

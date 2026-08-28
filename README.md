@@ -57,6 +57,12 @@ top of it, I would genuinely love to know.
   notes, and the note keeps a plain Markdown link to it, so your `scratchpad.md`
   still opens fine in any editor. Type a caption while it is highlighted: that is
   what search has to find it by later.
+- **Projects without folders.** Write `#zovery` in a note and that note is part
+  of the project. Tags are just text (they travel with `scratchpad.md` like
+  everything else), but they render clickable, typing `#` suggests the ones you
+  already use, and `/projects` lists them all so one keystroke pulls a whole
+  project together. When it's time to revise, "read together" stitches every
+  note carrying the tag into one chronological document you can copy anywhere.
 - **Secrets, not plaintext.** Stash a password, key, or PIN with `Cmd/Ctrl+K`.
   It is encrypted on your machine (the key lives in your OS keychain), shown as
   dots, copyable in a click, and kept out of both the search index and the plain
@@ -135,6 +141,7 @@ Your notes live in `~/.local/share/blurt/` (a SQLite file, a plain
 | `/` | formatting menu, at the start of a line |
 | `Cmd/Ctrl+K` | store a secret (encrypted) |
 | `Cmd/Ctrl+V` | paste a screenshot (or drop one on the window) |
+| `#tag` | mark a project; click a tag (or `/projects`) to see its notes |
 | `Up` | peek at matching notes, then edit one in place |
 | `Cmd/Ctrl+F` | search |
 | `Cmd/Ctrl+Z` | undo the last thing |

@@ -60,6 +60,18 @@
     </div>
   </div>
 
+  <!-- Reader: one project's notes stitched into a single chronological document,
+       for revising. Opened from /projects or a #tag search; esc closes. -->
+  <div id="reader-overlay" hidden>
+    <div id="reader-panel">
+      <div id="reader-head">
+        <span id="reader-title"></span>
+        <span id="reader-tools"><span id="reader-copy" title="copy the whole document as Markdown (also cmd/ctrl+c)">copy</span> · esc closes</span>
+      </div>
+      <div id="reader-body"></div>
+    </div>
+  </div>
+
   <!-- Cheatsheet: shown after the first-load splash, then only on `?`. -->
   <div id="cheatsheet" hidden></div>
 

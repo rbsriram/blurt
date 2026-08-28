@@ -968,3 +968,81 @@ complete portable copy and moving the notes folder moves the images with it.
 - **OCR is deliberately not in this step.** It is the expensive half (a `tesseract` dependency
   plus somewhere to keep text that is not `content`), and it is only worth paying for once the
   cheap half proves images actually get pasted. Captions cover the search gap until then.
+
+### 61. Projects: a #tag is a lens over the stream, never a folder (owner: "a way to combine things around projects")
+
+The owner asked to track project work: "how do I combine things around projects." The obvious
+answer (folders, or a tag column) is the one the PRD rejects on page one, so the design question
+was how to group without structure.
+
+- **Decision: a project is a word you type.** Write `#zovery` anywhere in a note and that note is
+  part of the project. The tag is plain text in `content`, so it costs nothing everywhere it
+  matters: the mirror carries it, export keeps it, and exact search already finds it the instant
+  the note is saved (a `#tag` query is just a substring). This is the date-chip move (#54)
+  replayed: derive a view from verbatim text, add zero schema.
+- **What Blurt adds on top, all derived at read time (`core/tags.py`):**
+  - Tags render as quiet clickable chips (same ink as prose, hover admits it's clickable, like
+    the date chip); clicking one runs its search. In search results too, so you can hop lenses.
+  - `/projects` summons the tag list (most recently used first, note counts; saving a note
+    bumps its project to the top, like a chat list), reusing the "coming up" card and its keys:
+    ↑↓ move, enter searches, ⌘/Ctrl+enter reads the project together (#62), esc closes.
+    Summoned only, never ambient (#57).
+  - Typing `#` offers the tags already in the stream (shares the slash menu's look), so one
+    project stays one tag instead of drifting into three spellings. Suggestion, not
+    enforcement: enter completes the word, ⌘/Ctrl+enter jumps to the project instead.
+  - A lone `#tag` + enter is a request, not a note: it opens that project rather than saving a
+    one-word bookmark note nobody meant to keep.
+- **Boundaries that keep prose safe:** a tag starts with a letter (`#42` stays an issue number)
+  and opens a word (URL fragments, `##heading`, `c#` never match); code spans/fences and
+  image/link targets are stripped before scanning. Client regex and server regex are kept
+  deliberately identical in effect; `tests/test_tags.py` pins the server side.
+- **Rejected: a tags table / tag CRUD.** Renaming a project is editing text; deleting a tag is
+  deleting the word. Any stored tag list would eventually disagree with the stream, and the
+  no-structure PRD is the product's spine, not a v1 shortcut.
+- **Secrets stay out** of the tag list, matching the radar: their labels are searchable
+  deliberately, but ambient surfaces shouldn't advertise them.
+
+### 62. The reader: a project read together, still not a document store (owner: "when I revise, I want to see it together")
+
+Course or project notes accumulate across days; revising them from a result list means opening
+notes one by one. The ask was one continuous read.
+
+- **Decision: a read-only "reader" view, derived like everything else.** From `/projects`
+  (click the count, or ⌘/Ctrl+enter on a row) or from a `#tag` search ("read together" in the
+  status line, also ⌘/Ctrl+enter), the tag's notes render as one chronological document: oldest
+  first, grouped under day headers, full Markdown, images inline. "copy" (also ⌘/Ctrl+C with
+  nothing selected) takes the whole thing as one Markdown doc for pasting anywhere.
+- **The tag being read is stripped from every line** (display only; the text keeps it). The
+  title already names the project, so repeating the stamp per line is noise. Tags for *other*
+  projects stay visible and clickable, and hop the reader across projects.
+- **Strict membership, deliberately different from the search lens.** The lens is hybrid search
+  (exact leads, related notes trail as suggestions), which is right for finding. A revision doc
+  must hold exactly what was stamped, so the reader uses `entries_for_tag` (`core/tags.py`):
+  real tag matches only, `#blurt` never pulls in `#blurty`, nothing guessed. Both views exist on
+  purpose; they answer different questions.
+- **Read-only on purpose.** A note has one home, the stream; the reader is a projection of it.
+  Editing inside a stitched document would make the projection writable and reopen every
+  "which copy is real" question the mirror already settled (verbatim text, derived views).
+- **Rejected: materializing the document** (a real note or file holding the stitched project).
+  It would go stale the moment the next tagged note lands, and stale copies of your own notes
+  are worse than none. The existing `GET /api/export/markdown?query=` stays as the loose,
+  score-floored exporter; the reader endpoint (`GET /api/tags/{tag}/entries`) is the strict one.
+
+### 63. The grouped stream: /group huddles the pad by project, the tag shows once (owner ask)
+
+Dogfooding the tags, the owner wanted the huddling in the main view itself, not only behind a
+search or the reader.
+
+- **Decision: a persistent view toggle, not a new surface.** `/group` rearranges the stream into
+  project sections (each #tag a quiet header with its notes oldest-first inside, sections ordered
+  by recent activity nearest the input, untagged notes under "everything else" at the far end)
+  and `/group` flips back. The choice persists. Same notes, same in-place editing; only the
+  arrangement changes, recomputed live on every save.
+- **Chronological stays the default view.** The stream answers "what happened lately, across
+  everything"; grouped answers "where does each project stand". Both are honest arrangements of
+  the same append-only text, so both stay, one keystroke apart.
+- **A tag renders once per view.** Sections hide their own tag on member lines (the header
+  already says it), exactly as the reader does; a note's other tags stay visible and clickable.
+  Display-only: the note's text always keeps its tags.
+- **A multi-tag note has one home in the grouped view** (its first tag) so nothing renders
+  twice in a single view; the reader, search, and /projects still count it under every tag.

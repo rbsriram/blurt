@@ -27,6 +27,7 @@ from ..core import (
 )
 from ..core.checklist import set_checkbox
 from ..core.dateref import anchor_dates
+from ..core.tags import collect_tags, entries_for_tag
 from .schemas import (
     CheckboxToggle,
     DateFormatRequest,
@@ -141,6 +142,43 @@ async def radar(request: Request, limit: int = Query(15, ge=1, le=50)):
         "entries": _db(request).entries_in_ranges([(start, "9999-12-31")], limit),
         "today": today.isoformat(),
     }
+
+
+@router.get("/tags")
+async def tags(request: Request, limit: int = Query(50, ge=1, le=200)):
+    """Distinct #tags across active notes, most recently used first.
+
+    Powers the on-demand "projects" surface (the `/projects` command) and the `#`
+    autocomplete in the compose box. Derived from content at read time (see
+    core/tags.py): a tag is just text the owner typed, never structure, so this is
+    a lens over the stream, not a folder system. Secret notes are skipped like the
+    radar does: their labels stay out of ambient surfaces.
+    """
+    entries = [
+        e
+        for e in _db(request).list_entries(limit=10**9, offset=0)
+        if e["is_superseded"] == 0 and not e["is_secret"]
+    ]
+    return {"tags": collect_tags(entries)[:limit]}
+
+
+@router.get("/tags/{tag}/entries")
+async def tag_entries(tag: str, request: Request):
+    """Every active note carrying exactly #tag, oldest first.
+
+    Powers the "read together" view: a project or course's notes, accumulated
+    across days, stitched into one chronological read. Strict membership (see
+    core/tags.py entries_for_tag), unlike the search lens, because a revision
+    doc must hold exactly what was stamped, nothing guessed.
+    """
+    entries = [
+        e
+        for e in _db(request).list_entries(limit=10**9, offset=0)
+        if e["is_superseded"] == 0 and not e["is_secret"]
+    ]
+    matched = entries_for_tag(entries, tag)
+    matched.reverse()   # stream order is newest-first; a read-through wants oldest-first
+    return {"entries": matched}
 
 
 @router.get("/entries/{entry_id}")

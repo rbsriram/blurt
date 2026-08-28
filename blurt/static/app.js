@@ -55,13 +55,14 @@ function anchor(href, text) {
 
 function linkify(s) {
   // One pass handles, left-to-right (each URL consumed once): images, markdown
-  // links, bare http(s) URLs, bare www. URLs, and emails. Images come first so the
-  // leading "!" is consumed rather than left stranded before a link. Trailing
-  // sentence punctuation is left outside the link so "see https://x." doesn't
-  // swallow the period.
+  // links, bare http(s) URLs, bare www. URLs, emails, and #tags. Images come first
+  // so the leading "!" is consumed rather than left stranded before a link. Tags
+  // come last so a URL fragment ("…/page#top") is consumed by the URL, never read
+  // as a tag. Trailing sentence punctuation is left outside the link so "see
+  // https://x." doesn't swallow the period.
   return s.replace(
-    /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<]+)|(\bwww\.[^\s<]+)|([\w.+-]+@[\w-]+\.[\w.-]+)/gi,
-    (m, imgAlt, imgSrc, mdText, mdUrl, http, www, email) => {
+    /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<]+)|(\bwww\.[^\s<]+)|([\w.+-]+@[\w-]+\.[\w.-]+)|(^|\s)(#[A-Za-z][\w-]*)/gi,
+    (m, imgAlt, imgSrc, mdText, mdUrl, http, www, email, tagPre, tag) => {
       if (imgSrc !== undefined) return imageTag(imgAlt, imgSrc) || m;
       if (mdUrl !== undefined) {
         return /^(https?:|mailto:|\/)/.test(mdUrl) ? anchor(mdUrl, mdText) : m;
@@ -69,6 +70,9 @@ function linkify(s) {
       if (http !== undefined) { const [u, t] = peelTrailingPunct(http); return anchor(u, u) + t; }
       if (www !== undefined) { const [u, t] = peelTrailingPunct(www); return anchor("http://" + u, u) + t; }
       if (email !== undefined) return anchor("mailto:" + email, email);
+      // A #tag is a lens over the stream (see core/tags.py): render it clickable.
+      // `tag` is word characters and hyphens only, so it is safe to embed as-is.
+      if (tag !== undefined) return `${tagPre}<span class="tag-chip" title="click to see this project">${tag}</span>`;
       return m;
     },
   );
@@ -217,6 +221,14 @@ function searchByDate(iso) {
   runSearch();
 }
 
+// Run search for a #tag. The query is the literal tag, so exact substring search
+// pulls every note carrying it the instant it is saved; no index, no folder.
+function searchByTag(tag) {
+  openSearch();
+  el.searchInput.value = tag;
+  runSearch();
+}
+
 // ---------------------------------------------------------------- search-term highlight (safe: text nodes only)
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function highlightTerms(root, query) {
@@ -258,6 +270,10 @@ const el = {
   searchInput: document.getElementById("search-input"),
   searchStatus: document.getElementById("search-status"),
   searchResults: document.getElementById("search-results"),
+  readerOverlay: document.getElementById("reader-overlay"),
+  readerTitle: document.getElementById("reader-title"),
+  readerCopy: document.getElementById("reader-copy"),
+  readerBody: document.getElementById("reader-body"),
   cheatsheet: document.getElementById("cheatsheet"),
   settings: document.getElementById("settings"),
   slashmenu: document.getElementById("slashmenu"),
@@ -280,7 +296,12 @@ const state = {
   peek: { matches: [], focus: -1, query: "" },
   // "coming up" card, summoned by /upcoming: open + the upcoming items + the focused row.
   radar: { open: false, items: [], focus: 0 },
+  // "projects" card, summoned by /projects: the stream's #tags as pickable lenses.
+  projects: { open: false, items: [], focus: 0 },
+  // "#" autocomplete: open while the word at the caret is a #prefix with known matches.
+  tagac: { open: false, items: [], focus: 0, wordStart: 0 },
   search: { items: [], focus: -1, query: "" },
+  grouped: !!localStorage.getItem("blurt-grouped"),   // stream huddled by #tag (/group)
   nav: -1,   // ↑-from-empty stream browse: index into stream entries (0 = newest), -1 = off
 
   // slash menu: open when the current line is "/<query>"; items is the filtered list.
@@ -323,9 +344,11 @@ function entryNode(e) {
     body.addEventListener("click", () => openSecretEditor(node, e));
   } else {
     body.innerHTML = md(e.content);
-    // Checkbox → tick it. Link → ⌘/Ctrl-click opens it (a bare click edits, so links
-    // never hijack editing). Anywhere else → edit the note.
+    // Checkbox → tick it. Tag → see that project. Link → ⌘/Ctrl-click opens it (a
+    // bare click edits, so links never hijack editing). Anywhere else → edit the note.
     body.addEventListener("click", (ev) => {
+      const tag = ev.target.closest(".tag-chip");
+      if (tag) { ev.stopPropagation(); searchByTag(tag.textContent); return; }
       const cb = ev.target.closest(".checkbox");
       if (cb) { ev.stopPropagation(); toggleCheckbox(node, e, cb); return; }
       const a = ev.target.closest("a");
@@ -528,6 +551,7 @@ async function openSecretEditor(node, e) {
 
 async function loadStream(reset = true) {
   if (state.loading) return;
+  if (state.grouped) { await loadGrouped(reset); return; }
   state.loading = true;
   if (reset) { state.offset = 0; state.end = false; el.stream.innerHTML = ""; state.entries.clear(); }
   const data = await api.get(`/api/entries?limit=${state.limit}&offset=${state.offset}`);
@@ -548,6 +572,102 @@ async function loadStream(reset = true) {
     el.stream.appendChild(hint);
   }
   state.loading = false;
+}
+
+// ---------------------------------------------------------------- grouped stream (/group)
+// The stream, huddled by project: every #tag becomes a section holding its notes
+// (oldest first inside, so each project reads top-down), sections ordered by most
+// recent activity with the busiest-lately nearest the input; untagged notes gather
+// under "everything else" at the far end. Same notes, same in-place editing, just
+// arranged. A note with several tags lives under its first tag here (one home per
+// view; the reader and search still show it under every tag). Client-side mirror
+// of core/tags.py extract_tags, kept identical in effect.
+const GROUP_KEY = "blurt-grouped";
+
+function extractTagsJs(content) {
+  const text = content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/!?\[[^\]]*\]\([^)\s]+\)/g, " ")
+    .replace(/(https?:\/\/|www\.)\S+/gi, " ");
+  const seen = new Set(), out = [];
+  for (const m of text.matchAll(/(^|\s)#([A-Za-z][\w-]*)/g)) {
+    const key = m[2].toLowerCase();
+    if (!seen.has(key)) { seen.add(key); out.push(m[2]); }
+  }
+  return out;
+}
+
+async function loadGrouped(reset) {
+  state.loading = true;
+  state.end = true;                        // everything loads up front; no scroll paging
+  // Page the whole stream in (the API caps a single page at 500), and only then
+  // swap the view, so a failed fetch never leaves the pad blank.
+  let items = [];
+  try {
+    for (let offset = 0; ; offset += 500) {
+      const data = await api.get(`/api/entries?limit=500&offset=${offset}`);
+      const page = data.entries || [];
+      items = items.concat(page);
+      if (page.length < 500) break;
+    }
+  } catch { state.loading = false; return; }
+  if (reset) { el.stream.innerHTML = ""; state.entries.clear(); }
+  items = items.filter((e) => !e.is_superseded);
+  // Scanning newest-first, a group's first sighting is its most recent activity.
+  const groups = new Map();                // key -> { tag, entries[] (newest first) }
+  const untagged = [];
+  for (const e of items) {
+    const tags = e.is_secret ? [] : extractTagsJs(e.content);
+    if (!tags.length) { untagged.push(e); continue; }
+    const key = tags[0].toLowerCase();
+    if (!groups.has(key)) groups.set(key, { tag: tags[0], entries: [] });
+    groups.get(key).entries.push(e);
+  }
+  if (untagged.length) groups.set("", { tag: null, entries: untagged });
+
+  // column-reverse container: first appended lands nearest the input. Most recent
+  // project first, "everything else" (key "") always last, i.e. farthest away.
+  const ordered = [...groups.values()].sort((a, b) => (a.tag === null) - (b.tag === null));
+  for (const g of ordered) {
+    const section = document.createElement("div");
+    section.className = "tag-group";
+    const head = document.createElement("div");
+    head.className = "tag-group-head";
+    head.textContent = g.tag ? `#${g.tag} · ${g.entries.length}` : `everything else · ${g.entries.length}`;
+    if (g.tag) {
+      head.title = "click to read this project together";
+      head.addEventListener("click", () => openReader(g.tag));
+    }
+    section.appendChild(head);
+    for (const e of [...g.entries].reverse()) {                // oldest first inside
+      const node = entryNode(e);
+      // The section header already names the project; repeating its tag on every
+      // line is noise (the reader does the same). Other projects' tags stay. The
+      // note's real text is untouched: open it to edit and the tag is right there.
+      if (g.tag) {
+        for (const chip of node.querySelectorAll(".tag-chip")) {
+          if (chip.textContent.toLowerCase() === "#" + g.tag.toLowerCase()) chip.remove();
+        }
+      }
+      section.appendChild(node);
+    }
+    el.stream.appendChild(section);
+  }
+  if (!items.length) {
+    const hint = document.createElement("div");
+    hint.id = "first-hint";
+    hint.textContent = `empty. type something below and press enter.`;
+    el.stream.appendChild(hint);
+  }
+  state.loading = false;
+}
+
+function toggleGrouped() {
+  state.grouped = !state.grouped;
+  localStorage.setItem(GROUP_KEY, state.grouped ? "1" : "");
+  loadStream(true);
+  flashHint(state.grouped ? "grouped by project — /group again for the stream" : "back to the stream");
 }
 
 // Infinite scroll toward older notes. In a column-reverse container scrollTop is
@@ -571,6 +691,7 @@ async function showRadar() {
   try { data = await api.get("/api/radar"); } catch { return; }
   const items = (data?.entries || []).filter((e) => !e.is_secret);
   if (!items.length) { closeRadar(); flashHint("nothing coming up"); focusComposeEnd(); return; }
+  closeProjects();                     // the two cards share a home; last summoned wins
   // Keep the server's "today" so a row dated before it can be marked missed (no clock drift).
   state.radar = { open: true, items, focus: 0, today: data.today };
   buildRadar();
@@ -613,6 +734,132 @@ function closeRadar() {
   state.radar = { open: false, items: [], focus: 0 };
   el.today.hidden = true;
   el.today.innerHTML = "";
+}
+
+// ---------------------------------------------------------------- projects (on demand)
+// Summoned with the `/projects` command, never shown automatically. The same compact
+// card as "coming up", but each row is a #tag seen in the active stream (most-used
+// first) and picking one runs a search for it. A tag is a lens, not a folder: the
+// list is derived from note text on request (see core/tags.py), nothing is stored.
+async function showProjects() {
+  let data;
+  try { data = await api.get("/api/tags"); } catch { return; }
+  const items = data?.tags || [];
+  if (!items.length) { closeProjects(); flashHint("no projects yet — write a #tag in a note"); focusComposeEnd(); return; }
+  closeRadar();                        // the two cards share a home; last summoned wins
+  state.projects = { open: true, items, focus: 0 };
+  buildProjects();
+  el.today.hidden = false;
+}
+
+function buildProjects() {
+  const p = state.projects;
+  el.today.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "today-head";
+  const title = document.createElement("span");
+  title.textContent = "projects";
+  const dismiss = document.createElement("button");
+  dismiss.className = "today-dismiss";
+  dismiss.textContent = "×";
+  dismiss.title = "close (esc)";
+  dismiss.addEventListener("mousedown", (ev) => { ev.preventDefault(); closeProjects(); focusComposeEnd(); });
+  head.append(title, dismiss);
+  el.today.appendChild(head);
+
+  p.items.forEach((t, i) => {
+    const row = document.createElement("button");
+    row.className = "today-item" + (i === p.focus ? " focused" : "");
+    const text = document.createElement("span");
+    text.className = "today-text";
+    text.textContent = "#" + t.tag;
+    const count = document.createElement("span");
+    count.className = "tag-count";
+    count.textContent = (t.count === 1 ? "1 note" : `${t.count} notes`) + " · read";
+    count.title = `read #${t.tag} together (${MOD}+enter)`;
+    // The count doubles as the "read together" door; the row itself searches.
+    count.addEventListener("mousedown", (ev) => { ev.preventDefault(); ev.stopPropagation(); closeProjects(); openReader(t.tag); });
+    row.append(text, count);
+    // mousedown + preventDefault so the compose box keeps focus (the keyboard flow)
+    row.addEventListener("mousedown", (ev) => { ev.preventDefault(); closeProjects(); searchByTag("#" + t.tag); });
+    el.today.appendChild(row);
+  });
+}
+
+function closeProjects() {
+  state.projects = { open: false, items: [], focus: 0 };
+  el.today.hidden = true;
+  el.today.innerHTML = "";
+}
+
+// ---------------------------------------------------------------- reader (a project, read together)
+// One tag's notes stitched into a single chronological document: notes for a project
+// or a course accumulate across days, and revising them wants one continuous read,
+// not a result list. Strict membership (server-side entries_for_tag: #blurt never
+// pulls in #blurty), oldest first, grouped under day headers. Read-only on purpose:
+// editing happens in the stream, the one place a note lives. "copy" takes the whole
+// document as Markdown for pasting anywhere.
+let readerMd = "";
+
+function readerDay(iso) {
+  const d = new Date(iso);   // created_at is UTC; group by the *local* day it was written
+  const now = new Date();
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString(undefined, opts).toLowerCase();
+}
+
+// Reading #zovery, every line saying "#zovery" is noise: the title already says it.
+// Strip that one tag (other projects' tags stay, still clickable); a note that was
+// only the tag plus an image/checklist keeps the rest of itself intact.
+function withoutTag(content, tag) {
+  const t = escapeRegex(tag);
+  return content
+    .replace(new RegExp(`^#${t}(?![\\w-])[^\\S\\n]*`, "gim"), "")   // line-leading tag + its gap
+    .replace(new RegExp(`[^\\S\\n]+#${t}(?![\\w-])`, "gi"), "")     // mid-line: the gap + the tag
+    .replace(/[^\S\n]+$/gm, "");                                    // any trailing spaces left
+}
+
+async function openReader(tag) {
+  tag = tag.replace(/^#/, "");
+  let data;
+  try { data = await api.get(`/api/tags/${encodeURIComponent(tag)}/entries`); } catch { return; }
+  const items = data?.entries || [];
+  if (!items.length) { flashHint(`no notes carry #${tag}`); return; }
+
+  el.readerTitle.textContent = `#${tag} · ${items.length} note${items.length > 1 ? "s" : ""}`;
+  el.readerBody.innerHTML = "";
+  let day = null;
+  for (const e of items) {
+    const d = readerDay(e.created_at);
+    if (d !== day) {
+      day = d;
+      const h = document.createElement("div");
+      h.className = "reader-day";
+      h.textContent = d;
+      el.readerBody.appendChild(h);
+    }
+    const note = document.createElement("div");
+    note.className = "reader-note";
+    note.innerHTML = md(withoutTag(e.content, tag).trim() || e.content);
+    el.readerBody.appendChild(note);
+  }
+  // The copy payload mirrors the view: a heading per day, the read tag stripped.
+  day = null;
+  readerMd = `# #${tag}\n`;
+  for (const e of items) {
+    const d = readerDay(e.created_at);
+    if (d !== day) { day = d; readerMd += `\n## ${d}\n`; }
+    readerMd += `\n${(withoutTag(e.content, tag).trim() || e.content).trimEnd()}\n`;
+  }
+  el.readerOverlay.hidden = false;
+  el.readerBody.scrollTop = 0;
+}
+
+function closeReader() {
+  el.readerOverlay.hidden = true;
+  el.readerBody.innerHTML = "";
+  readerMd = "";
 }
 
 // Bring a note into view in the stream and flash it. The note may be older than what's
@@ -678,6 +925,8 @@ const SLASH_ITEMS = [
   { label: "divider",    hint: "---",   keys: "divider rule line hr separator",      insert: "---\n" },
   { label: "secret",     hint: "encrypted", keys: "secret password credential pwd pin key lock", action: "secret" },
   { label: "coming up",  hint: "dated notes ahead", keys: "upcoming coming soon agenda due next dates radar", action: "upcoming" },
+  { label: "projects",   hint: "your #tags",        keys: "projects project tags tag lens work",              action: "projects" },
+  { label: "group",      hint: "huddle the stream by #tag", keys: "group grouped ungroup arrange huddle by project", action: "group" },
 ];
 
 function updateSlashMenu() {
@@ -723,12 +972,15 @@ function chooseSlash(i) {
   const it = state.slash.items[i];
   if (!it) return;
   const ta = el.compose;
-  if (it.action === "secret" || it.action === "upcoming") {   // drop the "/cmd", run the action
+  if (it.action) {                                            // drop the "/cmd", run the action
     ta.setRangeText("", state.slash.lineStart, ta.selectionStart, "end");
     closeSlash();
     autoGrow();
     localStorage.setItem(DRAFT_KEY, ta.value);
-    if (it.action === "secret") openSecretForm(); else showRadar();
+    if (it.action === "secret") openSecretForm();
+    else if (it.action === "projects") showProjects();
+    else if (it.action === "group") toggleGrouped();
+    else showRadar();
     return;
   }
   ta.setRangeText(it.insert, state.slash.lineStart, ta.selectionStart, "end");
@@ -749,10 +1001,112 @@ function closeSlash() {
   el.slashmenu.innerHTML = "";
 }
 
+// ---------------------------------------------------------------- "#" tag autocomplete
+// Typing "#" plus a letter offers the tags already in the stream, so one project
+// stays one tag (#zovery, not #zov today and #zovery tomorrow). Suggestion only:
+// any new word still saves fine, this is a nudge toward consistency, not a schema.
+// Shares the slash menu's element and look; the two never open at once (the slash
+// menu needs the line to be exactly "/query").
+let knownTags = null, knownTagsAt = 0;
+const TAGS_TTL = 30_000;   // refetch after 30s; saves invalidate instantly instead
+
+async function fetchKnownTags() {
+  if (knownTags && Date.now() - knownTagsAt < TAGS_TTL) return knownTags;
+  try {
+    const data = await api.get("/api/tags");
+    knownTags = data?.tags || [];
+    knownTagsAt = Date.now();
+  } catch { knownTags = knownTags || []; }
+  return knownTags;
+}
+
+function updateTagMenu() {
+  const ta = el.compose;
+  if (state.slash.open) { closeTagMenu(); return; }
+  if (ta.selectionStart !== ta.selectionEnd) { closeTagMenu(); return; }
+  const pos = ta.selectionStart;
+  // The word the caret is finishing must be "#" or "#<letters…>" opening at a word
+  // break. A bare "#" shows everything (the browse case); letters filter it down.
+  const m = ta.value.slice(0, pos).match(/(^|\s)#([A-Za-z][\w-]*)?$/);
+  if (!m) { closeTagMenu(); return; }
+  const prefix = m[2] || "";
+  const wordStart = pos - prefix.length - 1;   // index of the "#"
+  fetchKnownTags().then((tags) => {
+    // The caret may have moved while the list loaded; only show if still current.
+    if (el.compose.selectionStart !== pos) return;
+    const q = prefix.toLowerCase();
+    const items = q
+      ? tags.filter((t) => t.tag.toLowerCase().startsWith(q) && t.tag.toLowerCase() !== q)
+      : tags.slice();
+    if (!items.length) { closeTagMenu(); return; }
+    state.tagac = { open: true, items: items.slice(0, 6), focus: 0, wordStart };
+    renderTagMenu();
+  });
+}
+
+function renderTagMenu() {
+  const t = state.tagac;
+  if (!t.open) { el.slashmenu.hidden = true; el.slashmenu.innerHTML = ""; return; }
+  el.slashmenu.innerHTML = "";
+  t.items.forEach((it, i) => {
+    const row = document.createElement("div");
+    row.className = "slash-item" + (i === t.focus ? " focused" : "");
+    row.title = `enter completes · ${MOD}+enter reads the project`;
+    const label = document.createElement("span");
+    label.className = "slash-label";
+    label.textContent = "#" + it.tag;
+    const syn = document.createElement("span");
+    syn.className = "slash-syntax";
+    syn.textContent = it.count === 1 ? "1 note" : `${it.count} notes`;
+    row.append(label, syn);
+    // mousedown (not click) + preventDefault so the textarea keeps focus.
+    // ⌘/Ctrl+click mirrors ⌘/Ctrl+enter: open the project instead of completing.
+    row.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      if (ev.metaKey || ev.ctrlKey) { closeTagMenu(); openReader(it.tag); } else chooseTag(i);
+    });
+    el.slashmenu.appendChild(row);
+  });
+  el.slashmenu.hidden = false;
+}
+
+function chooseTag(i) {
+  const t = state.tagac;
+  const it = t.items[i];
+  if (!it) return;
+  const ta = el.compose;
+  ta.setRangeText("#" + it.tag + " ", t.wordStart, ta.selectionStart, "end");
+  closeTagMenu();
+  ta.focus();
+  localStorage.setItem(DRAFT_KEY, ta.value);
+  autoGrow();
+}
+
+function closeTagMenu() {
+  if (!state.tagac.open) return;
+  state.tagac = { open: false, items: [], focus: 0, wordStart: 0 };
+  el.slashmenu.hidden = true;
+  el.slashmenu.innerHTML = "";
+}
+
 async function saveEntry() {
   const content = el.compose.value;
   if (!content.trim()) return;
+  // A lone "#tag" is a request, not a note: nobody means to save a note that is
+  // only a bookmark. Open that project instead (a friendly hint if it's empty).
+  const lone = content.trim().match(/^#([A-Za-z][\w-]*)$/);
+  if (lone) {
+    el.compose.value = "";
+    localStorage.removeItem(DRAFT_KEY);
+    autoGrow();
+    closeSlash();
+    closeTagMenu();
+    openReader(lone[1]);
+    return;
+  }
   closeSlash();
+  closeTagMenu();
+  knownTagsAt = 0;                     // a save may add a tag; refetch next time
   dismissWelcome();
   el.compose.value = "";               // instant: the write is sub-ms server-side
   autoGrow();
@@ -1281,7 +1635,11 @@ function resultNode(e, query, i) {
     highlightTerms(body, query);
   }
   node.append(time, body);
-  node.addEventListener("click", () => locateEntry(e.id));
+  node.addEventListener("click", (ev) => {
+    // A tag inside a result re-searches by that tag; anywhere else jumps to the note.
+    const tag = ev.target.closest(".tag-chip");
+    if (tag) searchByTag(tag.textContent); else locateEntry(e.id);
+  });
   return node;
 }
 
@@ -1316,11 +1674,17 @@ async function runSearch() {
   // matches score 1.0 and always pass.
   const items = ((res.data && res.data.entries) || []).filter((e) => e.score >= SEARCH_MIN_SCORE);
   state.search = { items, focus: -1, query: q };
+  // Searching a lone #tag offers the reader: the project stitched into one document.
+  const tagQuery = items.length && /^#[A-Za-z][\w-]*$/.test(q);
   el.searchStatus.innerHTML = (items.length
     ? `${items.length} result${items.length > 1 ? "s" : ""} · ↑↓ to move, enter to jump`
-    : "no matches") + `  ·  <span id="search-clear">clear</span>`;
+    : "no matches")
+    + (tagQuery ? `  ·  <span id="search-read">read together (${MOD}+enter)</span>` : "")
+    + `  ·  <span id="search-clear">clear</span>`;
   const clearBtn = document.getElementById("search-clear");
   if (clearBtn) clearBtn.onclick = () => { el.searchInput.value = ""; el.searchInput.focus(); runSearch(); };
+  const readBtn = document.getElementById("search-read");
+  if (readBtn) readBtn.onclick = () => { closeSearch(); openReader(q); };
   el.searchResults.innerHTML = "";
   items.forEach((e, i) => el.searchResults.appendChild(resultNode(e, q, i)));
 }
@@ -1348,6 +1712,7 @@ function keyListHtml() {
     [`shift+enter`, "new line"],
     [`/`, "formatting menu (at line start)"],
     [`paste`, "drop a copied image into the note"],
+    [`#tag`, "mark a project; click a tag (or /projects) to see its notes"],
     [`${MOD}+k`, "store a secret (encrypted)"],
     [`${MOD}+f`, "search"],
     [`${MOD}+v`, "paste a screenshot (or drop one in)"],
@@ -1663,15 +2028,17 @@ el.compose.addEventListener("input", () => {
   dismissWelcome();                 // first keystroke clears the inline welcome
   clearNav();                       // typing leaves stream-browse mode
   closeRadar();                     // typing closes the summoned "coming up" card
+  closeProjects();                  // …and the summoned "projects" card
   localStorage.setItem(DRAFT_KEY, el.compose.value);
   autoGrow();
   updateSlashMenu();                // "/" at line start opens the formatting menu
+  updateTagMenu();                  // "#word" at the caret offers known tags
   if (state.peek.focus >= 0) { state.peek.focus = -1; renderPeek(); }  // typing resets peek focus
   scheduleGhost();
 });
 // Clicking away closes the slash menu (its items use mousedown+preventDefault, so
 // picking one doesn't blur and won't be lost).
-el.compose.addEventListener("blur", closeSlash);
+el.compose.addEventListener("blur", () => { closeSlash(); closeTagMenu(); });
 enableImagePaste(el.compose);
 
 el.compose.addEventListener("keydown", (ev) => {
@@ -1682,6 +2049,49 @@ el.compose.addEventListener("keydown", (ev) => {
     if (ev.key === "ArrowUp") { ev.preventDefault(); s.focus = (s.focus - 1 + s.items.length) % s.items.length; renderSlash(); return; }
     if (ev.key === "Enter" || ev.key === "Tab") { ev.preventDefault(); chooseSlash(s.focus); return; }
     if (ev.key === "Escape") { ev.preventDefault(); closeSlash(); return; }
+  }
+
+  // Tag autocomplete: ↑↓ move, Enter/Tab completes the tag (writing), ⌘/Ctrl+Enter
+  // opens that project's reader instead (viewing), Esc closes. Plain typing falls
+  // through (the input handler refilters), so it never blocks the pad.
+  if (state.tagac.open) {
+    const t = state.tagac;
+    if (ev.key === "ArrowDown") { ev.preventDefault(); t.focus = (t.focus + 1) % t.items.length; renderTagMenu(); return; }
+    if (ev.key === "ArrowUp") { ev.preventDefault(); t.focus = (t.focus - 1 + t.items.length) % t.items.length; renderTagMenu(); return; }
+    if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+      ev.preventDefault();
+      const it = t.items[t.focus];
+      const ta = el.compose;
+      // They were navigating, not writing: if the "#word" is all the box holds,
+      // clear it so no half-typed tag is left behind (a draft note is untouched).
+      if (ta.value.trim() === ta.value.slice(t.wordStart, ta.selectionStart).trim()) {
+        ta.value = "";
+        localStorage.removeItem(DRAFT_KEY);
+        autoGrow();
+      }
+      closeTagMenu();
+      if (it) openReader(it.tag);
+      return;
+    }
+    if (ev.key === "Enter" || ev.key === "Tab") { ev.preventDefault(); chooseTag(t.focus); return; }
+    if (ev.key === "Escape") { ev.preventDefault(); closeTagMenu(); return; }
+  }
+
+  // The summoned "projects" card: same keys as "coming up" below, but enter runs the
+  // focused tag's search (⌘/Ctrl+enter reads it together) instead of revealing a note.
+  if (state.projects.open) {
+    const p = state.projects;
+    if (ev.key === "ArrowUp") { ev.preventDefault(); p.focus = Math.max(0, p.focus - 1); buildProjects(); return; }
+    if (ev.key === "ArrowDown") { ev.preventDefault(); p.focus = Math.min(p.items.length - 1, p.focus + 1); buildProjects(); return; }
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      const it = p.items[p.focus];
+      closeProjects();
+      if (it) { if (ev.metaKey || ev.ctrlKey) openReader(it.tag); else searchByTag("#" + it.tag); }
+      return;
+    }
+    if (ev.key === "Escape") { ev.preventDefault(); closeProjects(); focusComposeEnd(); return; }
+    if (ev.key.length === 1 || ev.key === "Backspace") closeProjects();   // typing dismisses, then types
   }
 
   // The summoned "coming up" card owns the arrows/Enter/Esc while it's open: ↑↓ move,
@@ -1767,6 +2177,11 @@ el.searchInput.addEventListener("keydown", (ev) => {
   const s = state.search;
   if (ev.key === "ArrowDown") { ev.preventDefault(); s.focus = Math.min(s.focus + 1, s.items.length - 1); renderSearchFocus(); }
   else if (ev.key === "ArrowUp") { ev.preventDefault(); s.focus = Math.max(s.focus - 1, 0); renderSearchFocus(); }
+  else if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+    // ⌘/Ctrl+Enter on a #tag query: read the project together instead of jumping.
+    const q = el.searchInput.value.trim();
+    if (/^#[A-Za-z][\w-]*$/.test(q)) { ev.preventDefault(); closeSearch(); openReader(q); }
+  }
   else if (ev.key === "Enter") {
     ev.preventDefault();
     if (searchTimer) clearTimeout(searchTimer);
@@ -1777,8 +2192,28 @@ el.searchInput.addEventListener("keydown", (ev) => {
 });
 el.searchOverlay.addEventListener("click", (ev) => { if (ev.target === el.searchOverlay) closeSearch(); });
 
+// ---------------------------------------------------------------- wiring: reader
+el.readerOverlay.addEventListener("click", (ev) => { if (ev.target === el.readerOverlay) { closeReader(); focusComposeEnd(); } });
+async function copyReader() {
+  try { await navigator.clipboard.writeText(readerMd); el.readerCopy.textContent = "copied"; }
+  catch { el.readerCopy.textContent = "couldn't copy"; }
+  setTimeout(() => { el.readerCopy.textContent = "copy"; }, 1400);
+}
+el.readerCopy.addEventListener("click", copyReader);
+// A tag inside the read-through hops the reader to that project.
+el.readerBody.addEventListener("click", (ev) => {
+  const tag = ev.target.closest(".tag-chip");
+  if (tag) openReader(tag.textContent);
+});
+
 // ---------------------------------------------------------------- wiring: global
 window.addEventListener("keydown", (ev) => {
+  // ⌘/Ctrl+C in the reader with nothing selected copies the whole document; a real
+  // text selection keeps the browser's normal copy.
+  if (!el.readerOverlay.hidden && (ev.metaKey || ev.ctrlKey) && (ev.key === "c" || ev.key === "C")
+      && !String(window.getSelection() || "")) {
+    ev.preventDefault(); copyReader(); return;
+  }
   if ((ev.metaKey || ev.ctrlKey) && (ev.key === "z" || ev.key === "Z") && state.undoFn) {
     ev.preventDefault(); state.undoFn(); return;
   }
@@ -1807,6 +2242,7 @@ window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") {
     // Esc is "get me back to typing": close whatever's open, no matter where focus
     // is, and if nothing's open just return focus to the input box.
+    if (!el.readerOverlay.hidden) { ev.preventDefault(); closeReader(); focusComposeEnd(); return; }
     if (!el.searchOverlay.hidden) { ev.preventDefault(); closeSearch(); return; }
     if (!el.secretForm.hidden) { ev.preventDefault(); closeSecretForm(); return; }
     if (!el.settings.hidden) { ev.preventDefault(); closeSettings(); focusComposeEnd(); return; }
