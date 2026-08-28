@@ -18,7 +18,7 @@ from starlette.types import Scope
 from . import __version__
 from .api import router
 from .config import settings
-from .core import Indexer, MarkdownMirror, MediaStore, OllamaEmbedder, Retriever
+from .core import Indexer, MarkdownMirror, OllamaEmbedder, Retriever
 from .core.dateref import anchor_dates
 from .core.secrets import open_vault
 from .core.synthesizer import Synthesizer
@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
     app.state.retriever = retriever
     app.state.synthesizer = synthesizer
     app.state.mirror = mirror
-    app.state.media = MediaStore(settings.media_dir)
+
     # Encrypts jotted secrets; None if the OS keychain is unavailable (then the
     # secrets feature simply stays off, rest of the app unaffected).
     app.state.vault = open_vault()

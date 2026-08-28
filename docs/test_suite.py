@@ -25,13 +25,7 @@ BASE_URL = "http://127.0.0.1:7337"
 # FIXTURES
 # ============================================================
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def client():
     async with AsyncClient(base_url=BASE_URL, timeout=30.0) as c:
         yield c
@@ -893,3 +887,94 @@ class TestCheckboxToggle:
         await client.delete(f"/api/entries/{eid}")
         r2 = await client.patch(f"/api/entries/{eid}/checkbox", json={"index": 0, "checked": True})
         assert r2.status_code == 409
+
+
+# ============================================================
+# IMAGE ATTACHMENTS
+# ============================================================
+
+def _png(w=8, h=8):
+    """A real, decodable PNG built inline (no fixture files to carry around)."""
+    import struct, zlib
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
+    raw = b"".join(b"\x00" + bytes([200, 40, 40] * w) for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw))
+            + chunk(b"IEND", b""))
+
+
+class TestImageAttachments:
+    """Paste an image: bytes to disk, a Markdown reference in the note."""
+
+    async def test_upload_returns_a_reference(self, client):
+        r = await client.post("/api/files", content=_png(), headers={"Content-Type": "image/png"})
+        assert r.status_code == 201
+        body = r.json()
+        assert body["path"] == f"blurt-files/{body['name']}"
+        assert body["url"] == f"/api/files/{body['name']}"
+
+    async def test_uploaded_image_comes_back_byte_identical(self, client):
+        png = _png()
+        name = (await client.post("/api/files", content=png,
+                                  headers={"Content-Type": "image/png"})).json()["name"]
+        got = await client.get(f"/api/files/{name}")
+        assert got.status_code == 200
+        assert got.content == png
+        assert got.headers["content-type"] == "image/png"
+
+    async def test_the_bytes_decide_the_type_not_the_header(self, client):
+        gif = b"GIF89a" + b"\x00" * 32
+        r = await client.post("/api/files", content=gif, headers={"Content-Type": "image/png"})
+        assert r.json()["name"].endswith(".gif")
+
+    async def test_svg_is_refused(self, client):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        r = await client.post("/api/files", content=svg, headers={"Content-Type": "image/svg+xml"})
+        assert r.status_code == 415
+
+    async def test_html_disguised_as_an_image_is_refused(self, client):
+        r = await client.post("/api/files", content=b"<!DOCTYPE html><script>x</script>",
+                              headers={"Content-Type": "image/png"})
+        assert r.status_code == 415
+
+    async def test_empty_upload_is_refused(self, client):
+        r = await client.post("/api/files", content=b"", headers={"Content-Type": "image/png"})
+        assert r.status_code == 422
+
+    async def test_oversize_upload_is_refused(self, client):
+        r = await client.post("/api/files", content=_png() + b"\x00" * (11 * 1024 * 1024),
+                              headers={"Content-Type": "image/png"})
+        assert r.status_code == 413
+
+    @pytest.mark.parametrize("name", [
+        "..%2f..%2fblurt.db", "0123456789abcdef.svg", "nope.png", "aaaaaaaaaaaaaaaa.png",
+    ])
+    async def test_only_generated_names_are_served(self, client, name):
+        assert (await client.get(f"/api/files/{name}")).status_code == 404
+
+    async def test_a_note_holding_an_image_is_an_ordinary_note(self, client):
+        ref = (await client.post("/api/files", content=_png(),
+                                 headers={"Content-Type": "image/png"})).json()["path"]
+        content = f"gate keypad\n![the keypad by the side door]({ref})"
+        r = await client.post("/api/entries", json={"content": content})
+        assert r.status_code == 201
+        entry = r.json()
+        assert entry["content"] == content        # stored verbatim, reference and all
+        assert entry["dates"] == []               # the file name must not look like a date
+
+    async def test_the_caption_is_what_search_finds(self, client):
+        ref = (await client.post("/api/files", content=_png(),
+                                 headers={"Content-Type": "image/png"})).json()["path"]
+        await client.post("/api/entries", json={"content": f"![spare key under the blue flowerpot]({ref})"})
+        await asyncio.sleep(3)                    # let the background embed land
+        r = await client.post("/api/query", json={"query": "where did I leave the spare key"})
+        assert any("flowerpot" in e["content"] for e in r.json()["entries"])
+
+    async def test_the_image_reference_reaches_the_markdown_export(self, client):
+        ref = (await client.post("/api/files", content=_png(),
+                                 headers={"Content-Type": "image/png"})).json()["path"]
+        await client.post("/api/entries", json={"content": f"![a shot]({ref})"})
+        md = (await client.get("/api/export/markdown")).text
+        assert f"![a shot]({ref})" in md          # relative, so it resolves next to the file

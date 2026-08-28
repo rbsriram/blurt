@@ -34,6 +34,19 @@ function escapeHtml(s) {
           .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// Image attachments (see core/attachments.py). A note holds a relative
+// `![caption](blurt-files/<name>)`; the bytes are served from /api/files/<name>.
+// The path must match the exact generated form and the tag is built here, so a
+// note can never aim an <img> at anything but one of our own files.
+const ATTACH_RE = /^blurt-files\/([0-9a-f]{16}\.(?:png|jpg|gif|webp))$/;
+
+function imageTag(alt, src) {
+  const m = ATTACH_RE.exec(src);
+  if (!m) return null;                       // anything else stays literal text
+  // alt is already HTML-escaped by md(); the name is hex plus a known extension.
+  return `<img class="note-img" src="/api/files/${m[1]}" alt="${alt}" loading="lazy" />`;
+}
+
 function anchor(href, text) {
   // href/text are already HTML-escaped (md escapes first); only `"` needs guarding
   // for the attribute. Links open in a new tab; Cmd/Ctrl-click in the stream follows.
@@ -41,12 +54,15 @@ function anchor(href, text) {
 }
 
 function linkify(s) {
-  // One pass handles, left-to-right (each URL consumed once): markdown links, bare
-  // http(s) URLs, bare www. URLs, and emails. Trailing sentence punctuation is left
-  // outside the link so "see https://x." doesn't swallow the period.
+  // One pass handles, left-to-right (each URL consumed once): images, markdown
+  // links, bare http(s) URLs, bare www. URLs, and emails. Images come first so the
+  // leading "!" is consumed rather than left stranded before a link. Trailing
+  // sentence punctuation is left outside the link so "see https://x." doesn't
+  // swallow the period.
   return s.replace(
-    /\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<]+)|(\bwww\.[^\s<]+)|([\w.+-]+@[\w-]+\.[\w.-]+)/gi,
-    (m, mdText, mdUrl, http, www, email) => {
+    /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<]+)|(\bwww\.[^\s<]+)|([\w.+-]+@[\w-]+\.[\w.-]+)/gi,
+    (m, imgAlt, imgSrc, mdText, mdUrl, http, www, email) => {
+      if (imgSrc !== undefined) return imageTag(imgAlt, imgSrc) || m;
       if (mdUrl !== undefined) {
         return /^(https?:|mailto:|\/)/.test(mdUrl) ? anchor(mdUrl, mdText) : m;
       }
@@ -60,14 +76,6 @@ function linkify(s) {
 function peelTrailingPunct(url) {
   const m = url.match(/^(.*?)([.,!?]+)$/);
   return m ? [m[1], m[2]] : [url, ""];
-}
-
-// A pasted image renders only if its URL is one of our own locally-stored files.
-// Anything else (remote, data:, javascript:) stays literal text, so a note can never
-// beacon out or smuggle in markup. Returns the <img> html, or null to leave it alone.
-function imageTag(alt, url) {
-  if (!/^\/api\/media\/[a-f0-9]{64}\.(png|jpg|gif|webp)$/.test(url)) return null;
-  return `<img src="${url}" alt="${alt}" loading="lazy" class="note-img"/>`;
 }
 
 function inlineMd(s) {
@@ -84,6 +92,13 @@ function inlineMd(s) {
     part = part.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     return linkify(part);
   }).join("");
+}
+
+// A note as a one-line label (peek lines, "coming up" rows, undo hints): an image
+// reference reads as its caption. Mirrors core/attachments.text_for_search, which
+// does the same for the embedder.
+function plainText(content) {
+  return content.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt) => alt || "[image]");
 }
 
 function md(raw) {
@@ -784,6 +799,131 @@ function showUndoHint(label, undoFn) {
   }, 5000);
 }
 
+// ---------------------------------------------------------------- images
+// Paste or drop a screenshot: the bytes go to disk (POST /api/files), the note
+// gets a plain Markdown reference, and the caption is left selected so you can
+// type straight over it. The caption is not decoration: an image contributes
+// nothing to the embedding, so it is the only text search has to work with.
+const IMAGE_CAPTION = "screenshot";
+
+function imageFilesFrom(dt) {
+  if (!dt) return [];
+  const files = Array.from(dt.files || []).filter((f) => f.type.startsWith("image/"));
+  if (files.length) return files;
+  // A pasted (rather than dropped) image usually arrives as an item, not a file.
+  return Array.from(dt.items || [])
+    .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+    .map((it) => it.getAsFile())
+    .filter(Boolean);
+}
+
+function isFileDrag(dt) {
+  return !!dt && Array.from(dt.types || []).includes("Files");
+}
+
+async function uploadImage(file) {
+  // Raw bytes, not multipart: the server sniffs the real type anyway.
+  const r = await fetch("/api/files", {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (r.ok) return r.json();
+  if (r.status === 413) throw new Error("that image is too big");
+  if (r.status === 415) throw new Error("only PNG, JPEG, GIF and WebP can be added");
+  throw new Error("could not add that image");
+}
+
+// Drop `![caption](path)` in at the cursor, on its own line. `selectCaption` leaves
+// the placeholder highlighted so typing replaces it; when several images arrive at
+// once only the last one does that, or the next insert would land inside the
+// previous caption instead of after it.
+function insertImageRef(ta, path, selectCaption = true) {
+  const at = ta.selectionStart;
+  const lead = at > 0 && !ta.value.slice(0, at).endsWith("\n") ? "\n" : "";
+  ta.setRangeText(`${lead}![${IMAGE_CAPTION}](${path})\n`, at, ta.selectionEnd, "end");
+  ta.dispatchEvent(new Event("input", { bubbles: true }));   // draft save, autogrow, peek
+  ta.focus();
+  if (!selectCaption) return;                                // cursor stays at the end
+  const caption = at + lead.length + 2;                      // just past the "!["
+  ta.setSelectionRange(caption, caption + IMAGE_CAPTION.length);
+}
+
+async function attachImages(ta, files) {
+  showImageHint(files.length > 1 ? `adding ${files.length} images…` : "adding image…", 0);
+  try {
+    for (const [i, f] of files.entries()) {
+      insertImageRef(ta, (await uploadImage(f)).path, i === files.length - 1);
+    }
+    showImageHint("caption it so search can find it");
+  } catch (err) {
+    showImageHint(err.message);
+  }
+}
+
+// Same transient line the undo hint uses; 0 keeps it up until the next message.
+function showImageHint(text, ms = 5000) {
+  el.inputHint.textContent = text;
+  if (hintTimer) clearTimeout(hintTimer);
+  if (!ms) return;
+  hintTimer = setTimeout(restoreHint, ms);
+}
+
+// Back to whatever the hint line should say when nothing transient is happening.
+function restoreHint() {
+  if (state.peek.matches.length) renderPeek(); else el.inputHint.textContent = "";
+}
+
+// The compose box and any open inline editor both take pasted images.
+function enableImagePaste(ta) {
+  ta.addEventListener("paste", (ev) => {
+    const files = imageFilesFrom(ev.clipboardData);
+    if (!files.length) return;                 // an ordinary text paste is untouched
+    ev.preventDefault();
+    attachImages(ta, files);
+  });
+}
+
+// Whichever box you are typing in receives a drop; the compose box otherwise.
+function activeEditor() {
+  const a = document.activeElement;
+  const isEditor = a && a.tagName === "TEXTAREA" && (a === el.compose || a.classList.contains("entry-edit"));
+  return isEditor ? a : el.compose;
+}
+
+// Dropping anywhere in the window adds the image. preventDefault is not optional:
+// without it the webview navigates away from the app to the dropped file.
+let dragging = false;
+window.addEventListener("dragover", (ev) => {
+  if (!isFileDrag(ev.dataTransfer)) return;
+  ev.preventDefault();
+  if (!dragging) { dragging = true; showImageHint("drop it here", 0); }
+});
+window.addEventListener("dragleave", (ev) => {
+  if (ev.relatedTarget !== null) return;                    // still inside the window
+  dragging = false;
+  restoreHint();
+});
+window.addEventListener("drop", (ev) => {
+  dragging = false;
+  if (!isFileDrag(ev.dataTransfer)) { restoreHint(); return; }
+  ev.preventDefault();
+  const files = imageFilesFrom(ev.dataTransfer);
+  if (files.length) attachImages(activeEditor(), files);
+  else showImageHint("only PNG, JPEG, GIF and WebP can be added");
+});
+
+// A note can outlive its image: pulled from a peer that has the text but not the
+// bytes, or a notes folder moved by hand. Say so in place, don't show a torn icon.
+document.addEventListener("error", (ev) => {
+  const img = ev.target;
+  if (!img || img.tagName !== "IMG" || !img.classList.contains("note-img")) return;
+  const missing = document.createElement("span");
+  missing.className = "img-missing";
+  missing.textContent = "[image not on this device]";
+  img.replaceWith(missing);
+}, true);   // capture: an img error does not bubble
+
 // ---------------------------------------------------------------- inline edit (stream)
 // Edit a note in place in the stream. `hooks.onSaved` fires after a successful save.
 function openEditor(node, e, hooks = {}) {
@@ -799,6 +939,7 @@ function openEditor(node, e, hooks = {}) {
   // Grow to fit the whole note (no fixed height); CSS caps at ~viewport then scrolls.
   const grow = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
   ta.addEventListener("input", grow);
+  enableImagePaste(ta);
   body.replaceWith(ta);
   grow();
   ta.focus();
@@ -901,9 +1042,8 @@ function renderPeek() {
       highlightTerms(lbl, p.query);
     } else {
       const txt = document.createElement("span");
-      txt.textContent = (i === p.focus)
-        ? m.content.replace(/\s+/g, " ")
-        : m.content.replace(/\s+/g, " ").slice(0, PEEK_SNIPPET);
+      const flat = plainText(m.content).replace(/\s+/g, " ");
+      txt.textContent = (i === p.focus) ? flat : flat.slice(0, PEEK_SNIPPET);
       line.appendChild(txt);
       highlightTerms(txt, p.query);
     }
@@ -1048,7 +1188,7 @@ function scheduleGhost() {
 }
 
 // ---------------------------------------------------------------- retire / restore / undo
-function snippet(e, n = 42) { return e ? e.content.replace(/\s+/g, " ").slice(0, n) : "note"; }
+function snippet(e, n = 42) { return e ? plainText(e.content).replace(/\s+/g, " ").slice(0, n) : "note"; }
 
 function flash(node) {
   node.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1210,6 +1350,7 @@ function keyListHtml() {
     [`paste`, "drop a copied image into the note"],
     [`${MOD}+k`, "store a secret (encrypted)"],
     [`${MOD}+f`, "search"],
+    [`${MOD}+v`, "paste a screenshot (or drop one in)"],
     [`esc`, "back to typing (closes anything open)"],
     // a note in the stream
     [`click a note`, "edit it in place"],
@@ -1528,51 +1669,10 @@ el.compose.addEventListener("input", () => {
   if (state.peek.focus >= 0) { state.peek.focus = -1; renderPeek(); }  // typing resets peek focus
   scheduleGhost();
 });
-// Paste a screenshot or image: store it locally and drop a markdown ref where the
-// cursor is. Non-image pastes fall through to the textarea's normal text paste.
-el.compose.addEventListener("paste", (ev) => {
-  const items = ev.clipboardData?.items;
-  if (!items) return;
-  const image = [...items].find((it) => it.kind === "file" && it.type.startsWith("image/"));
-  if (!image) return;
-  ev.preventDefault();
-  const file = image.getAsFile();
-  if (file) uploadImage(file);
-});
-
-function insertAtCursor(ta, text) {
-  const start = ta.selectionStart, end = ta.selectionEnd;
-  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
-  const pos = start + text.length;
-  ta.setSelectionRange(pos, pos);
-}
-
-async function uploadImage(file) {
-  const ta = el.compose;
-  // Optimistic placeholder so the paste feels instant; swapped for the real ref once
-  // stored (localhost write, near-instant), or removed if the upload is rejected.
-  const id = Math.random().toString(36).slice(2, 8);
-  const token = `(uploading image ${id}…)`;
-  insertAtCursor(ta, token);
-  ta.dispatchEvent(new Event("input"));
-  try {
-    const res = await fetch("/api/images", {
-      method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
-    });
-    if (!res.ok) throw new Error("upload failed");
-    const { url } = await res.json();
-    ta.value = ta.value.replace(token, `![](${url})`);
-  } catch {
-    ta.value = ta.value.replace(token, "");
-    flashHint("couldn't add that image");
-  }
-  ta.dispatchEvent(new Event("input"));  // resync draft/autogrow/ghost
-  ta.focus();
-}
-
 // Clicking away closes the slash menu (its items use mousedown+preventDefault, so
 // picking one doesn't blur and won't be lost).
 el.compose.addEventListener("blur", closeSlash);
+enableImagePaste(el.compose);
 
 el.compose.addEventListener("keydown", (ev) => {
   // Slash menu owns the arrows/Enter/Esc while it's open.

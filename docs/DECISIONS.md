@@ -927,3 +927,44 @@ Owner: "I should be able to paste in things." Plain-text paste already worked (t
 
 Tests: `tests/test_media.py` (accepts each image kind, dedup, owner-only perms, rejects non-images and
 RIFF-that-is-not-WEBP, blocks traversal/garbage names) plus a manual end-to-end round trip through the API.
+
+### 60. Images v2: bytes in the notes folder, a Markdown reference in the note (owner ask, CTO design)
+
+Supersedes the interim `media/` implementation from #59: files move from the internal
+`media/` dir beside the DB to `blurt-files/` inside the notes folder, so the mirror stays a
+complete portable copy and moving the notes folder moves the images with it.
+
+- **Decision: the note stays text.** A pasted or dropped image is written to `blurt-files/`
+  inside the notes folder and the note gets an ordinary `![caption](blurt-files/<name>)`. That
+  choice falls straight out of the invariant everything else here leans on: **content is
+  verbatim text and everything else is derived.** Chunks, date chips, and the mirror all
+  rebuild from `content`, so a reference costs them nothing, while a new media type in the
+  storage layer would have forced a special case into each one.
+- **Rejected: the blob in SQLite.** It bloats the row that the mirror rewrite reads on every
+  save, and quietly demotes `scratchpad.md` from "a complete readable copy of everything" to
+  "the text half". Files on disk keep the mirror portable: the relative path resolves in
+  Obsidian, Typora, or anything else pointed at that folder, which is exactly why the
+  reference is relative and the runtime URL (`/api/files/<name>`) is applied only at render
+  time.
+- **Rejected: base64 in the content.** Same objection, worse: it breaks "it is just text",
+  and it would be embedded as if it were prose.
+- **Captions are the feature, not decoration.** An image contributes nothing to an embedding,
+  so a screenshot with no words is invisible to both the peek and search, which is the one
+  promise the product actually makes. So: the caption placeholder is inserted selected, ready
+  to be typed over, and indexing runs `text_for_search` to embed the caption instead of the
+  file path. An image-only note falls back to embedding its raw content, because a note with
+  zero chunks is treated as unindexed forever (`db.unindexed_active_ids`).
+- **The type comes from the bytes, never the header, and the name is ours.** Sniffing the
+  signature is what keeps an HTML or SVG payload from arriving as `image/png`; SVG is excluded
+  outright as a scriptable document. Names are server-generated random hex, which is also why
+  they carry no date: a `2026-08-24` in the path would be picked up by the date parser and hang
+  a phantom date chip on every note holding an image. Serving is a route rather than a static
+  mount because the notes folder can move at runtime (and when it does, the images move with it).
+- **A note can outlive its image** (a notes folder moved by hand, a copied scratchpad without
+  its files). The renderer says "[image not on this device]" in place rather than a torn icon.
+- **Nothing deletes an image yet.** Notes supersede rather than vanish, so no file is safely
+  reclaimable without a sweep over active content. Deliberately deferred: an orphan costs
+  disk, a wrongly-deleted attachment costs a note.
+- **OCR is deliberately not in this step.** It is the expensive half (a `tesseract` dependency
+  plus somewhere to keep text that is not `content`), and it is only worth paying for once the
+  cheap half proves images actually get pasted. Captions cover the search gap until then.

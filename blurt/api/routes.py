@@ -7,15 +7,24 @@ in single-digit milliseconds.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
+import shutil
 from datetime import date, timedelta
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from starlette.responses import FileResponse
 
 from ..config import set_date_order, set_notes_dir, settings
-from ..core import active_stream_markdown, render_stream_markdown
+from ..core import (
+    active_stream_markdown,
+    attachments,
+    attachments_dir,
+    render_stream_markdown,
+)
 from ..core.checklist import set_checkbox
 from ..core.dateref import anchor_dates
 from .schemas import (
@@ -34,6 +43,8 @@ from .schemas import (
 # current __version__, so no releases/tags API or auth is needed.
 _LATEST_VERSION_URL = "https://raw.githubusercontent.com/rbsriram/blurt/main/blurt/__init__.py"
 
+log = logging.getLogger("blurt.api")
+
 router = APIRouter(prefix="/api")
 
 
@@ -49,10 +60,6 @@ def _indexer(request: Request):
 
 def _retriever(request: Request):
     return request.app.state.retriever
-
-
-def _media(request: Request):
-    return request.app.state.media
 
 
 def _touch_mirror(request: Request) -> None:
@@ -220,6 +227,52 @@ async def get_chunks(entry_id: int, request: Request):
     return {"chunks": db.get_chunks(entry_id)}
 
 
+# --- image attachments --------------------------------------------------
+# Bytes live on disk in `blurt-files/` next to scratchpad.md; the note itself
+# only ever holds a relative Markdown reference (core/attachments.py). The body
+# is raw image bytes, not multipart: no extra dependency, and one less parser
+# between the network and the disk.
+
+@router.post("/files", status_code=201)
+async def upload_file(request: Request):
+    """Store one pasted/dropped image and return the reference to put in a note."""
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > settings.attachment_max_bytes:
+        # Refuse on the header so an oversize body is never buffered into memory.
+        raise HTTPException(status_code=413, detail="image too large")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=422, detail="empty upload")
+    if len(data) > settings.attachment_max_bytes:
+        raise HTTPException(status_code=413, detail="image too large")
+    try:
+        # The type is sniffed from the bytes; the declared Content-Type is ignored.
+        # Off the loop: writing megabytes must not stall everyone else's typing.
+        name = await asyncio.to_thread(attachments.save, data, attachments_dir(settings.notes_dir))
+    except ValueError as e:
+        raise HTTPException(status_code=415, detail=str(e)) from e
+    except OSError as e:
+        raise HTTPException(status_code=507, detail="could not write the image") from e
+    return {"name": name, "path": attachments.markdown_path(name), "url": f"/api/files/{name}"}
+
+
+@router.get("/files/{name}")
+async def get_file(name: str):
+    """Serve an attachment back to the UI. `name` is validated against the generated
+    form before it is ever joined to a path, so `..` and friends cannot escape."""
+    if not attachments.is_valid_name(name):
+        raise HTTPException(status_code=404, detail="not found")
+    path = attachments_dir(settings.notes_dir) / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    # Content-addressed-ish: a name is never reused, so this can cache forever.
+    return FileResponse(
+        path,
+        media_type=attachments.media_type(name),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 # --- secrets ------------------------------------------------------------
 
 @router.post("/secrets", status_code=201)
@@ -358,6 +411,10 @@ async def change_notes_dir(body: NotesDirRequest, request: Request):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     new_path = folder / "scratchpad.md"
+    # Images are referenced relatively from the mirror, so they have to travel with
+    # it or every note with a screenshot in it breaks. Best-effort: a failure here
+    # must not fail the folder change (the notes themselves are already fine).
+    await asyncio.to_thread(_move_attachments, old_path.parent, folder)
     mirror = getattr(request.app.state, "mirror", None)
     if mirror is not None:
         mirror.set_path(new_path)
@@ -368,6 +425,24 @@ async def change_notes_dir(body: NotesDirRequest, request: Request):
             except OSError:
                 pass  # a leftover old mirror is harmless; do not fail the change over it
     return {"notes_dir": str(folder), "scratchpad_path": str(new_path)}
+
+
+def _move_attachments(old_dir: Path, new_dir: Path) -> None:
+    """Move `blurt-files/` to the new notes folder, file by file so an existing
+    folder at the destination is merged rather than clobbered. Names are random,
+    so a collision means the same file is already there: leave it and move on."""
+    src, dst = attachments_dir(old_dir), attachments_dir(new_dir)
+    if src == dst or not src.is_dir():
+        return
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        for f in src.iterdir():
+            if f.is_file() and not (dst / f.name).exists():
+                shutil.move(str(f), str(dst / f.name))
+        if not any(src.iterdir()):
+            src.rmdir()
+    except OSError:
+        log.warning("could not move %s to %s; images stay where they are", src, dst)
 
 
 @router.get("/update-check")
@@ -406,33 +481,6 @@ def _is_newer(latest: str, current: str) -> bool:
         return _version_tuple(latest) > _version_tuple(current)
     except Exception:
         return False
-
-
-# --- images (pasted screenshots; stored and served locally only) -------
-
-@router.post("/images")
-async def upload_image(request: Request):
-    """Store a pasted image and return the URL to reference it by. The body is the
-    raw image bytes; the type is sniffed from the bytes, not trusted from the header.
-    Stays on this machine: the file is only ever served back over the localhost API."""
-    data = await request.body()
-    try:
-        name = _media(request).save(data)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"url": f"/api/media/{name}", "name": name}
-
-
-@router.get("/media/{name}")
-async def get_media(name: str, request: Request):
-    """Serve a stored image by its content-addressed name. The store rejects any name
-    that is not <hash>.<ext>, so this can never read outside the media dir."""
-    resolved = _media(request).resolve(name)
-    if resolved is None:
-        raise HTTPException(status_code=404, detail="not found")
-    path, media_type = resolved
-    # Content-addressed names are immutable, so the file can be cached hard.
-    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "max-age=31536000, immutable"})
 
 
 # --- test/dev only ------------------------------------------------------

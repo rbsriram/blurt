@@ -364,7 +364,8 @@ PORT = 7337
 | Export to markdown | ❌ v1.1 |
 | Multi-device sync | ❌ v3 |
 | Browser extension capture | ❌ v2 |
-| Image paste + OCR search | ❌ v2 |
+| Image paste | ✅ v1.6 (see DECISIONS #60) |
+| OCR search over pasted images | ❌ v2 |
 | Markdown rendering in stream | ✅ v1 |
 | Table support (markdown syntax) | ✅ v1 |
 
@@ -392,7 +393,7 @@ Core loop only. Capture, ghost suggestion, semantic search, inline edit, superse
 
 ### v2.0 — Capture Everywhere
 - **Voice input** — local `whisper.cpp`. Hold hotkey, speak, transcribed text appended to input. Model: `base.en`. No cloud, no cost.
-- **Image paste + OCR** — paste or drag image into scratchpad. Local OCR via `tesseract` extracts text, stored as searchable content alongside image blob. Ghost suggestion and search work on OCR'd text.
+- **Image paste + OCR** — paste half shipped (DECISIONS #60): the image lands in `blurt-files/` beside the notes and the note holds a Markdown reference, with the caption carrying search. OCR is what remains: paste or drag image into scratchpad. Local OCR via `tesseract` extracts text, stored as searchable content alongside image blob. Ghost suggestion and search work on OCR'd text.
 - **Mobile web UI** — responsive layout for phone browser pointing at your home server. Capture-optimized: big input, minimal chrome.
 - **Browser extension** — highlight text on any webpage, hit extension button, dumps to scratchpad with source URL as metadata. Chrome + Firefox.
 

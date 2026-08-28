@@ -52,6 +52,11 @@ top of it, I would genuinely love to know.
 - **Dates that just work.** Write "meeting David tomorrow" or "deadline 14 Jun"
   and Blurt quietly tags the real date. Search "tomorrow" or "next week" to pull
   those notes up. A day/month vs month/day toggle handles "6/4" your way.
+- **Screenshots, pasted.** `Cmd/Ctrl+V` a screenshot straight into the pad, or
+  drop an image on the window. It lands in a `blurt-files` folder next to your
+  notes, and the note keeps a plain Markdown link to it, so your `scratchpad.md`
+  still opens fine in any editor. Type a caption while it is highlighted: that is
+  what search has to find it by later.
 - **Secrets, not plaintext.** Stash a password, key, or PIN with `Cmd/Ctrl+K`.
   It is encrypted on your machine (the key lives in your OS keychain), shown as
   dots, copyable in a click, and kept out of both the search index and the plain
@@ -118,8 +123,8 @@ curl -fsSL https://raw.githubusercontent.com/rbsriram/blurt/main/install.sh | ba
 git clone https://github.com/rbsriram/blurt && cd blurt && ./setup.sh
 ```
 
-Your notes live in `~/.local/share/blurt/` (a SQLite file and a plain
-`scratchpad.md`). Press `?` in the app for the keys.
+Your notes live in `~/.local/share/blurt/` (a SQLite file, a plain
+`scratchpad.md`, and a `blurt-files/` folder for any images you paste). Press `?` in the app for the keys.
 
 ## The keys (short version)
 
@@ -129,6 +134,7 @@ Your notes live in `~/.local/share/blurt/` (a SQLite file and a plain
 | `Shift+Enter` | new line (and continues a list) |
 | `/` | formatting menu, at the start of a line |
 | `Cmd/Ctrl+K` | store a secret (encrypted) |
+| `Cmd/Ctrl+V` | paste a screenshot (or drop one on the window) |
 | `Up` | peek at matching notes, then edit one in place |
 | `Cmd/Ctrl+F` | search |
 | `Cmd/Ctrl+Z` | undo the last thing |

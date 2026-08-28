@@ -100,6 +100,11 @@ class Settings:
 
     # --- Limits / safety ---
     max_content_chars: int = field(default_factory=lambda: _env_int("MAX_CONTENT_CHARS", 1_000_000))
+    # Ceiling on one pasted/dropped image. A screenshot is ~1-3MB; 10MB leaves room
+    # for a retina full-screen grab without letting a stray video file through.
+    attachment_max_bytes: int = field(
+        default_factory=lambda: _env_int("ATTACHMENT_MAX_BYTES", 10 * 1024 * 1024)
+    )
 
     # --- Test/dev only: enables destructive /api/test/* endpoints ---
     enable_test_endpoints: bool = field(default_factory=lambda: _env_bool("TESTING", False))
@@ -124,13 +129,6 @@ class Settings:
         Settings; only affects dates whose digits don't already disambiguate."""
         chosen = _read_settings(self.db_path).get("date_order")
         return chosen if chosen in ("DMY", "MDY") else "DMY"
-
-    @property
-    def media_dir(self) -> Path:
-        """Where pasted images live: beside the DB (internal), not in the notes folder.
-        Kept off any cloud-synced notes dir so large binaries are not silently uploaded,
-        and locked owner-only like the DB."""
-        return Path(self.db_path).parent / "media"
 
     @property
     def static_dir(self) -> Path:

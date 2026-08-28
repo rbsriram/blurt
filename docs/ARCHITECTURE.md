@@ -13,6 +13,7 @@ blurt/
   core/
     embedder.py         OllamaEmbedder: async batch embeddings w/ nomic prefixes
     chunker.py          pure chunk_text()
+    attachments.py      pasted images: type sniffing, name generation, on-disk store
     indexer.py          async background worker: queue -> embed (batched, incremental) -> store
     retriever.py        suggest() (ghost) + query() (hybrid lexical+vector)
     synthesizer.py      optional LLM answer synthesis (off by default)
@@ -39,6 +40,18 @@ scripts/                startup.sh, winddown.sh (session lifecycle)
    (`search_document:` prefix), store chunk rows + BLOBs, and add active chunks'
    vectors to `vec_chunks`. Storing per group makes entries searchable
    progressively during bulk inserts.
+
+**Attach an image** (`POST /api/files`, then a normal save)
+1. The UI posts the raw bytes; the real type is sniffed from them (a declared
+   `Content-Type` is never trusted) and a random hex name is generated here.
+2. Bytes land in `blurt-files/` inside the notes folder, beside `scratchpad.md`.
+3. The UI puts `![caption](blurt-files/<name>)` in the note. From there it is an
+   ordinary text note: save, edit, supersede, mirror and sync need no special case.
+4. `GET /api/files/<name>` serves it back, after validating `<name>` against the
+   generated form. It is a route, not a static mount, because the notes folder can
+   move at runtime.
+5. Indexing embeds the note with each reference reduced to its caption
+   (`text_for_search`), so the vector carries meaning rather than a file path.
 
 **Ghost** (`POST /api/suggest`)
 1. Reject if below the server word floor.

@@ -7,6 +7,7 @@ bounded but real.
 
 - Someone on your local network reaching the app.
 - Malicious content pasted into a note (stored XSS when rendered).
+- A pasted file being something other than the image it claims to be.
 - Your notes being readable if your machine/account is compromised.
 - Injection via the API (SQL injection, oversized payloads, malformed input).
 
@@ -30,6 +31,26 @@ formatting, and only emits tags it constructs itself. Pasted `<script>`,
 `<img onerror=…>`, etc. become inert text. No `innerHTML` of raw user content,
 no sanitizer dependency needed. Links are restricted to `http(s):`, `mailto:`,
 and root-relative URLs.
+
+**Image attachments.** A pasted or dropped image is written to `blurt-files/`
+inside your notes folder; the note itself only holds a relative Markdown
+reference. Two rules bound it. First, **the bytes decide the type**: the file
+signature is sniffed server-side and only PNG, JPEG, GIF and WebP are stored, so
+a `Content-Type: image/png` on an HTML or SVG payload is rejected (415). SVG is
+excluded deliberately, it is a scriptable document rather than a picture.
+Second, **no client string ever reaches a path**: names are generated
+server-side (random hex), and `GET /api/files/{name}` matches the name against
+that exact generated form before touching the filesystem, so `..` and absolute
+paths are 404s rather than traversals. The renderer applies the same rule again
+on the way out: it draws an `<img>` only for a reference matching the generated
+form, and builds the tag itself, so a note cannot point one at a remote URL, a
+`data:` URI, or anything else. Uploads are capped (`attachment_max_bytes`,
+default 10MB), refused on the declared `Content-Length` before the body is read,
+and files are written `chmod 600`.
+
+Note that an image is **not** covered by the secrets feature: a screenshot of a
+password sits on disk in the clear like any other note. Jot credentials with
+`Cmd/Ctrl+K` instead.
 
 **SQL injection.** All queries are parameterized. `LIKE` patterns escape `%`,
 `_`, and `\`. Verified by the integration suite (`'; DROP TABLE entries; --`

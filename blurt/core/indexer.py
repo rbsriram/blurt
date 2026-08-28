@@ -15,6 +15,7 @@ from collections import defaultdict
 
 from ..config import Settings
 from ..db import Database
+from .attachments import text_for_search
 from .chunker import chunk_text
 from .embedder import OllamaEmbedder
 
@@ -113,8 +114,13 @@ class Indexer:
             entry = await asyncio.to_thread(self._db.get_entry, eid)
             if entry is None:
                 continue
+            # Images contribute no text, so embed the note with each `![caption](path)`
+            # reduced to its caption. An image-only note falls back to its raw content:
+            # every active note must yield at least one chunk or the self-heal pass
+            # re-enqueues it forever (see db.unindexed_active_ids).
+            source = text_for_search(entry["content"])
             chunks = chunk_text(
-                entry["content"],
+                source if source.strip() else entry["content"],
                 single_max_words=self._s.chunk_single_max_words,
                 size_words=self._s.chunk_size_words,
                 overlap_words=self._s.chunk_overlap_words,

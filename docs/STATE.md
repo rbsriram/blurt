@@ -45,11 +45,12 @@ tested, and linted.
   to jot a credential, not a password manager. See DECISIONS #55 and `docs/SECURITY.md`.
 - **Editing/deleting:** any note deletes the text-pad way (open, clear, Enter); the
   per-note `×` is gone. `Esc` returns focus to the input box from anywhere.
-- **Image paste:** paste a screenshot into the box and it renders inline in the note.
-  Images are stored locally (`media/` beside the DB, owner-only, content-addressed),
-  served localhost-only, and rendered only for our own media URLs so nothing leaves the
-  machine. No OCR yet, so a pasted image is viewable but not semantically searchable. See
-  DECISIONS #59.
+- **Images:** paste a screenshot with `⌘V` or drop one on the window. Bytes go to
+  `blurt-files/` inside the notes folder (moving the notes folder moves them too), the
+  note holds a relative `![caption](blurt-files/<name>)`, so `scratchpad.md` stays a
+  complete, portable copy. The type is sniffed from the bytes (PNG/JPEG/GIF/WebP only,
+  no SVG) and the caption is what carries the note into search, since an image embeds
+  nothing. OCR is not built. See DECISIONS #60 (supersedes the interim media/ store, #59).
 - **Smart-search engine state:** the pad is gated on first launch until Ollama + the
   embedding model are ready (so notes are never saved unindexable); after that an Ollama
   drop is non-blocking (capture + exact search continue, the peek resumes on recovery).
