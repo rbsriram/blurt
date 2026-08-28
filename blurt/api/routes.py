@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import shutil
+import subprocess
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -496,6 +499,61 @@ async def update_check(request: Request):
         "update_available": _is_newer(latest, current),
         "command": "pipx upgrade blurt",
     }
+
+
+# One update at a time; a second click while one runs just reports "already updating".
+_update_lock = asyncio.Lock()
+
+
+def _find_pipx() -> str | None:
+    """Locate pipx even when launched from the .app bundle, where PATH is minimal."""
+    found = shutil.which("pipx")
+    if found:
+        return found
+    for cand in (Path.home() / ".local/bin/pipx", Path("/opt/homebrew/bin/pipx"), Path("/usr/local/bin/pipx")):
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
+def _run_update() -> tuple[bool, str]:
+    """Upgrade the installed package in place. pipx first (the documented install),
+    else pip in this interpreter's environment. Blocking; runs on a worker thread.
+    The running process keeps serving the old code; the new version loads on the
+    next launch, which is why the UI asks for a quit-and-reopen to finish."""
+    env = {**os.environ, "PATH": os.environ.get("PATH", "") + ":/usr/bin:/bin:/opt/homebrew/bin:"
+           + str(Path.home() / ".local/bin")}
+    pipx = _find_pipx()
+    if pipx:
+        cmd = [pipx, "upgrade", "blurt"]
+    else:
+        try:
+            import pip  # noqa: F401  (only asking: can this environment self-update?)
+        except ImportError:
+            return False, "no pipx or pip found — run `pipx upgrade blurt` in a terminal"
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade",
+               "git+https://github.com/rbsriram/blurt"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+    except subprocess.TimeoutExpired:
+        return False, "the update timed out — run `pipx upgrade blurt` in a terminal"
+    tail = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+    return r.returncode == 0, (tail[-1] if tail else "")
+
+
+@router.post("/update")
+async def run_update(request: Request):
+    """One-click update: re-resolve the package from GitHub and install it. The
+    endpoint is localhost-only like everything else and takes no input; it runs a
+    fixed command. Returns when the install finishes; the app must be reopened to
+    actually run the new version."""
+    if _update_lock.locked():
+        return {"ok": False, "detail": "already updating"}
+    async with _update_lock:
+        ok, detail = await asyncio.to_thread(_run_update)
+    latest = await _fetch_latest_version()
+    return {"ok": ok, "detail": detail, "latest": latest,
+            "needs_restart": ok, "current": request.app.state.version}
 
 
 async def _fetch_latest_version() -> str | None:

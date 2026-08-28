@@ -1046,3 +1046,26 @@ search or the reader.
   Display-only: the note's text always keeps its tags.
 - **A multi-tag note has one home in the grouped view** (its first tag) so nothing renders
   twice in a single view; the reader, search, and /projects still count it under every tag.
+
+### 64. One-click update: the app runs `pipx upgrade` for you (owner: "can I update from here itself")
+
+Settings could *check* for updates but the fix was a terminal command, which is the wrong
+ask for an app whose audience includes people who installed it once and never want to see a
+shell again.
+
+- **Decision: an "Update now" button that runs the documented upgrade, nothing cleverer.**
+  `POST /api/update` (localhost-only, no input, one fixed command, one at a time) runs
+  `pipx upgrade blurt` on a worker thread — falling back to `pip install --upgrade` when the
+  environment self-installed via pip — and reports the result. The copyable command stays in
+  the UI as the fallback when neither tool can be found.
+- **Quit-and-reopen finishes it, by design.** The running process keeps serving the code it
+  loaded; the upgrade replaces what the *next* launch imports. Self-restarting the process
+  from inside a request is exactly the kind of magic that fails half-way and eats a window,
+  so the UI says "Updated to X. Quit and reopen blurt to finish" and leaves the last step
+  visible and manual.
+- **Root-cause fix alongside:** `pyproject.toml` had been stuck at an old version while the
+  app's `__version__` moved, so `pipx upgrade` always concluded "already at latest" and did
+  nothing. The two now move together (1.6.1); the release checklist is: bump both, tag.
+- **PATH survival:** launched from the .app bundle the process gets a minimal PATH, so pipx
+  is looked up in the usual homes (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`)
+  rather than assumed on PATH.

@@ -16,8 +16,10 @@ menu) to `~/Applications`: `blurt/installer.py` writes a thin bundle that execs
 created silently on first run (once; a `.app-added` marker stops it resurrecting a bundle
 the user trashed) or via `blurt install-app`. The window sizes to the screen and remembers
 its geometry; the menu bar (blurt/File/Edit/View/Window/Help) is built in `blurt/desktop.py`.
-A Settings pane (`⌘,`) holds the notes-folder choice and an update check; `scratchpad.md`
-can live in any folder (e.g. an Obsidian/Dropbox folder) while the index DB stays internal.
+A Settings pane (`⌘,`) holds the notes-folder choice and updates: "Check for updates" plus a
+one-click "Update now" that runs `pipx upgrade blurt` for you (quit and reopen to finish; see
+DECISIONS #64). `scratchpad.md` can live in any folder (e.g. an Obsidian/Dropbox folder)
+while the index DB stays internal.
 `blurt uninstall` removes the app and leaves notes alone. The icon ships in the wheel
 (`blurt/assets/Blurt.icns`, plus `static/blurt-icon.png` for the splash). CI (lint + import
 smoke + offline unit tests) is green; Issues + Discussions are on.

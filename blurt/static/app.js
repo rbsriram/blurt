@@ -1886,14 +1886,40 @@ async function checkUpdates() {
   try { d = await api.get("/api/update-check"); } catch { out.textContent = "Couldn't reach GitHub."; return; }
   if (d.error) { out.textContent = d.error; return; }
   if (d.update_available) {
-    out.innerHTML = `Update available: <strong>${escapeHtml(d.latest)}</strong>` +
+    out.innerHTML = `Update available: <strong>${escapeHtml(d.latest)}</strong> ` +
+      `<button id="set-update-now">Update now</button>` +
       `<div class="cmd"><code>${escapeHtml(d.command)}</code><button id="set-copy">Copy</button></div>`;
     document.getElementById("set-copy").onclick = () => {
       navigator.clipboard && navigator.clipboard.writeText(d.command);
       flashHint("command copied");
     };
+    document.getElementById("set-update-now").onclick = () => runUpdate(d);
   } else {
     out.textContent = `You're on the latest version (${escapeHtml(d.current)}).`;
+  }
+}
+
+// One click updates in place (the server runs `pipx upgrade blurt` for you); the
+// new version loads on the next launch, so the ask afterwards is quit-and-reopen.
+// The copyable command stays as the fallback if the in-place update can't run.
+async function runUpdate(d) {
+  const out = document.getElementById("set-update-result");
+  out.innerHTML = `updating to <strong>${escapeHtml(d.latest)}</strong>… (up to a minute)`;
+  let r;
+  try { r = await api.post("/api/update", {}); } catch { r = { ok: false }; }
+  const res = (r && r.data) || r || {};
+  if (res.ok) {
+    out.innerHTML = `Updated to <strong>${escapeHtml(res.latest || d.latest)}</strong>. ` +
+      `Quit and reopen blurt to finish.`;
+  } else {
+    out.innerHTML = `Couldn't update automatically` +
+      (res.detail ? `: ${escapeHtml(res.detail)}` : ".") +
+      `<div class="cmd"><code>${escapeHtml(d.command)}</code><button id="set-copy2">Copy</button></div>`;
+    const b = document.getElementById("set-copy2");
+    if (b) b.onclick = () => {
+      navigator.clipboard && navigator.clipboard.writeText(d.command);
+      flashHint("command copied");
+    };
   }
 }
 
