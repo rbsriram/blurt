@@ -5,7 +5,7 @@ _A living snapshot of where Blurt is. Update it as things change._
 ## Where it is
 
 Blurt is **shipped: public, open source (MIT) at
-[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.6.0.** Install is
+[github.com/rbsriram/blurt](https://github.com/rbsriram/blurt), v1.7.0.** Install is
 `pipx install git+https://github.com/rbsriram/blurt` then `blurt` (see the README);
 a `blurt/cli.py` launcher checks Ollama, starts the server, and opens Blurt in its
 own native desktop window (`blurt/desktop.py`, via pywebview; `BLURT_BROWSER=1`
@@ -57,10 +57,10 @@ tested, and linted.
   plain text (mirror and export carry it for free) that renders as a quiet clickable
   chip; clicking runs its search. `/projects` summons the tag list (most recently used
   first), typing `#` autocompletes tags already in the stream, and a lone `#tag` + enter
-  opens the project rather than saving a bookmark note. For revising, the reader ("read
-  together") stitches a tag's notes into one chronological, copyable document (strictly
-  the tagged set, read-only), and `/group` rearranges the stream itself into live project
-  sections. A lens, never a folder. See DECISIONS #61, #62, and #63.
+  (or `/project tag`) opens the project, or starts it by pre-filling `#tag ` in the box
+  when it has no notes yet. For revising, the reader ("read together") stitches a tag's
+  notes into one chronological, copyable document (strictly the tagged set, read-only).
+  A lens, never a folder. See DECISIONS #61, #62, and #65 (#63 `/group` was removed).
 - **Smart-search engine state:** the pad is gated on first launch until Ollama + the
   embedding model are ready (so notes are never saved unindexable); after that an Ollama
   drop is non-blocking (capture + exact search continue, the peek resumes on recovery).

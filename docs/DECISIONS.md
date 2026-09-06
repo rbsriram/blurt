@@ -1069,3 +1069,25 @@ shell again.
 - **PATH survival:** launched from the .app bundle the process gets a minimal PATH, so pipx
   is looked up in the usual homes (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`)
   rather than assumed on PATH.
+
+### 65. Projects made obvious: `/project name` works, a new tag starts itself, `/group` is gone (owner: "I made it so complicated that even I do not know")
+
+Dogfooding a fresh use (jotting startup ideas), the owner typed `/projects ideas` + enter,
+the most natural guess, and got a literal note saying "/projects ideas". The slash menu only
+matched `/word`; a space killed it, and enter saved the text. Nothing in the app accepted a
+command with an argument, and the help listed tags as one row in a flat key list.
+
+- **Decision: `/project name` (also `/projects`, `/tag`) opens or starts that project.** A
+  lone `#name` + enter does the same. If the tag has notes, the reader opens. If it has none,
+  the box is pre-filled with `#name ` and a hint says to type the first note. That moment is
+  the whole lesson: a project is not created, it is a word you keep typing. Previously an
+  unknown lone `#tag` wiped the box and said "no notes carry #tag", a dead end.
+- **A full-line `/command` never saves as a note.** `/projects`, `/upcoming`, `/secret` typed
+  out and entered now run (`slashLineAction`). Unknown `/whatever` still saves as text.
+- **`/group` removed (supersedes #63).** Three surfaces for one idea (the `/projects` list, the
+  reader, and a rearranged main stream) was one too many, and `/group` was the one that
+  changed what the pad itself looks like, which is the disorienting part. The list answers
+  "what projects do I have", the reader answers "show me all of this one". Enough.
+- **Help redone (`?`).** A flat key list at 440px became a wider panel of sections by intent
+  (write, projects, find, edit, formatting, app), each with a one-line lead. Projects get a
+  section that spells out every way in. First-load welcome shows only write + projects.

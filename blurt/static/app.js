@@ -301,7 +301,6 @@ const state = {
   // "#" autocomplete: open while the word at the caret is a #prefix with known matches.
   tagac: { open: false, items: [], focus: 0, wordStart: 0 },
   search: { items: [], focus: -1, query: "" },
-  grouped: !!localStorage.getItem("blurt-grouped"),   // stream huddled by #tag (/group)
   nav: -1,   // ↑-from-empty stream browse: index into stream entries (0 = newest), -1 = off
 
   // slash menu: open when the current line is "/<query>"; items is the filtered list.
@@ -551,7 +550,6 @@ async function openSecretEditor(node, e) {
 
 async function loadStream(reset = true) {
   if (state.loading) return;
-  if (state.grouped) { await loadGrouped(reset); return; }
   state.loading = true;
   if (reset) { state.offset = 0; state.end = false; el.stream.innerHTML = ""; state.entries.clear(); }
   const data = await api.get(`/api/entries?limit=${state.limit}&offset=${state.offset}`);
@@ -572,102 +570,6 @@ async function loadStream(reset = true) {
     el.stream.appendChild(hint);
   }
   state.loading = false;
-}
-
-// ---------------------------------------------------------------- grouped stream (/group)
-// The stream, huddled by project: every #tag becomes a section holding its notes
-// (oldest first inside, so each project reads top-down), sections ordered by most
-// recent activity with the busiest-lately nearest the input; untagged notes gather
-// under "everything else" at the far end. Same notes, same in-place editing, just
-// arranged. A note with several tags lives under its first tag here (one home per
-// view; the reader and search still show it under every tag). Client-side mirror
-// of core/tags.py extract_tags, kept identical in effect.
-const GROUP_KEY = "blurt-grouped";
-
-function extractTagsJs(content) {
-  const text = content
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`[^`]*`/g, " ")
-    .replace(/!?\[[^\]]*\]\([^)\s]+\)/g, " ")
-    .replace(/(https?:\/\/|www\.)\S+/gi, " ");
-  const seen = new Set(), out = [];
-  for (const m of text.matchAll(/(^|\s)#([A-Za-z][\w-]*)/g)) {
-    const key = m[2].toLowerCase();
-    if (!seen.has(key)) { seen.add(key); out.push(m[2]); }
-  }
-  return out;
-}
-
-async function loadGrouped(reset) {
-  state.loading = true;
-  state.end = true;                        // everything loads up front; no scroll paging
-  // Page the whole stream in (the API caps a single page at 500), and only then
-  // swap the view, so a failed fetch never leaves the pad blank.
-  let items = [];
-  try {
-    for (let offset = 0; ; offset += 500) {
-      const data = await api.get(`/api/entries?limit=500&offset=${offset}`);
-      const page = data.entries || [];
-      items = items.concat(page);
-      if (page.length < 500) break;
-    }
-  } catch { state.loading = false; return; }
-  if (reset) { el.stream.innerHTML = ""; state.entries.clear(); }
-  items = items.filter((e) => !e.is_superseded);
-  // Scanning newest-first, a group's first sighting is its most recent activity.
-  const groups = new Map();                // key -> { tag, entries[] (newest first) }
-  const untagged = [];
-  for (const e of items) {
-    const tags = e.is_secret ? [] : extractTagsJs(e.content);
-    if (!tags.length) { untagged.push(e); continue; }
-    const key = tags[0].toLowerCase();
-    if (!groups.has(key)) groups.set(key, { tag: tags[0], entries: [] });
-    groups.get(key).entries.push(e);
-  }
-  if (untagged.length) groups.set("", { tag: null, entries: untagged });
-
-  // column-reverse container: first appended lands nearest the input. Most recent
-  // project first, "everything else" (key "") always last, i.e. farthest away.
-  const ordered = [...groups.values()].sort((a, b) => (a.tag === null) - (b.tag === null));
-  for (const g of ordered) {
-    const section = document.createElement("div");
-    section.className = "tag-group";
-    const head = document.createElement("div");
-    head.className = "tag-group-head";
-    head.textContent = g.tag ? `#${g.tag} · ${g.entries.length}` : `everything else · ${g.entries.length}`;
-    if (g.tag) {
-      head.title = "click to read this project together";
-      head.addEventListener("click", () => openReader(g.tag));
-    }
-    section.appendChild(head);
-    for (const e of [...g.entries].reverse()) {                // oldest first inside
-      const node = entryNode(e);
-      // The section header already names the project; repeating its tag on every
-      // line is noise (the reader does the same). Other projects' tags stay. The
-      // note's real text is untouched: open it to edit and the tag is right there.
-      if (g.tag) {
-        for (const chip of node.querySelectorAll(".tag-chip")) {
-          if (chip.textContent.toLowerCase() === "#" + g.tag.toLowerCase()) chip.remove();
-        }
-      }
-      section.appendChild(node);
-    }
-    el.stream.appendChild(section);
-  }
-  if (!items.length) {
-    const hint = document.createElement("div");
-    hint.id = "first-hint";
-    hint.textContent = `empty. type something below and press enter.`;
-    el.stream.appendChild(hint);
-  }
-  state.loading = false;
-}
-
-function toggleGrouped() {
-  state.grouped = !state.grouped;
-  localStorage.setItem(GROUP_KEY, state.grouped ? "1" : "");
-  loadStream(true);
-  flashHint(state.grouped ? "grouped by project — /group again for the stream" : "back to the stream");
 }
 
 // Infinite scroll toward older notes. In a column-reverse container scrollTop is
@@ -745,7 +647,7 @@ async function showProjects() {
   let data;
   try { data = await api.get("/api/tags"); } catch { return; }
   const items = data?.tags || [];
-  if (!items.length) { closeProjects(); flashHint("no projects yet — write a #tag in a note"); focusComposeEnd(); return; }
+  if (!items.length) { closeProjects(); flashHint("no projects yet. type #idea + enter to start one"); focusComposeEnd(); return; }
   closeRadar();                        // the two cards share a home; last summoned wins
   state.projects = { open: true, items, focus: 0 };
   buildProjects();
@@ -925,8 +827,7 @@ const SLASH_ITEMS = [
   { label: "divider",    hint: "---",   keys: "divider rule line hr separator",      insert: "---\n" },
   { label: "secret",     hint: "encrypted", keys: "secret password credential pwd pin key lock", action: "secret" },
   { label: "coming up",  hint: "dated notes ahead", keys: "upcoming coming soon agenda due next dates radar", action: "upcoming" },
-  { label: "projects",   hint: "your #tags",        keys: "projects project tags tag lens work",              action: "projects" },
-  { label: "group",      hint: "huddle the stream by #tag", keys: "group grouped ungroup arrange huddle by project", action: "group" },
+  { label: "projects",   hint: "your #tags · or /project name", keys: "projects project tags tag lens work", action: "projects" },
 ];
 
 function updateSlashMenu() {
@@ -979,7 +880,6 @@ function chooseSlash(i) {
     localStorage.setItem(DRAFT_KEY, ta.value);
     if (it.action === "secret") openSecretForm();
     else if (it.action === "projects") showProjects();
-    else if (it.action === "group") toggleGrouped();
     else showRadar();
     return;
   }
@@ -1089,19 +989,56 @@ function closeTagMenu() {
   el.slashmenu.innerHTML = "";
 }
 
+// Open a project by name. If it has notes, read them; if it has none yet, start it:
+// put "#tag " in the box so the first note is one keystroke away. This is how a
+// project is born, there is no other step.
+async function openOrStartProject(tag) {
+  tag = tag.replace(/^#/, "");
+  let data;
+  try { data = await api.get(`/api/tags/${encodeURIComponent(tag)}/entries`); } catch { return; }
+  if (data?.entries?.length) { openReader(tag); return; }
+  el.compose.value = `#${tag} `;
+  localStorage.setItem(DRAFT_KEY, el.compose.value);
+  autoGrow();
+  focusComposeEnd();
+  flashHint(`new project: #${tag}. type your first note and press enter.`);
+}
+
+// A line that is only "/command" or "/command argument" is a request, not a note.
+// The slash menu covers the first form while typing; this catches the second
+// ("/projects ideas"), which the menu drops the moment a space is typed.
+// Returns the action to run, or null when the line is not a known command (then it
+// saves as ordinary text, like any other note starting with a slash).
+function slashLineAction(text) {
+  const m = text.trim().match(/^\/([A-Za-z-]+)(?:\s+(.+))?$/);
+  if (!m) return null;
+  const cmd = m[1].toLowerCase(), arg = (m[2] || "").trim();
+  if (/^(projects?|tags?)$/.test(cmd)) {
+    const t = arg.replace(/^#/, "");
+    if (!t) return showProjects;
+    if (/^[A-Za-z][\w-]*$/.test(t)) return () => openOrStartProject(t);
+    return () => flashHint("a project name is one word, letters first: /project ideas");
+  }
+  if (arg) return null;
+  if (cmd === "upcoming") return showRadar;
+  if (cmd === "secret" && secretsAvailable) return openSecretForm;
+  return null;
+}
+
 async function saveEntry() {
   const content = el.compose.value;
   if (!content.trim()) return;
-  // A lone "#tag" is a request, not a note: nobody means to save a note that is
-  // only a bookmark. Open that project instead (a friendly hint if it's empty).
+  // A lone "#tag" or a "/command ..." line is a request, not a note: nobody means to
+  // save a bookmark or a typed command. Open the project instead.
   const lone = content.trim().match(/^#([A-Za-z][\w-]*)$/);
-  if (lone) {
+  const request = lone ? () => openOrStartProject(lone[1]) : slashLineAction(content);
+  if (request) {
     el.compose.value = "";
     localStorage.removeItem(DRAFT_KEY);
     autoGrow();
     closeSlash();
     closeTagMenu();
-    openReader(lone[1]);
+    request();
     return;
   }
   closeSlash();
@@ -1704,51 +1641,86 @@ function flashHint(msg) {
 // scratchpad.md on disk (see the File menu in the desktop app); that file IS the copy.
 
 // ---------------------------------------------------------------- cheatsheet
-// One key list, two presentations: written inline into the pad on first load
-// (#welcome), and a summoned floating panel afterward (#cheatsheet via `?`).
-function keyListHtml() {
-  const rows = [
-    [`enter`, "save the note"],
-    [`shift+enter`, "new line"],
-    [`/`, "formatting menu (at line start)"],
-    [`paste`, "drop a copied image into the note"],
-    [`#tag`, "mark a project; click a tag (or /projects) to see its notes"],
-    [`${MOD}+k`, "store a secret (encrypted)"],
-    [`${MOD}+f`, "search"],
-    [`${MOD}+v`, "paste a screenshot (or drop one in)"],
-    [`esc`, "back to typing (closes anything open)"],
-    // a note in the stream
-    [`click a note`, "edit it in place"],
-    [`clear it + enter`, "delete it"],
-    [`${MOD}+z`, "undo the last save / delete"],
-    // browsing the peek (the as-you-type matches)
-    [`↑`, "step up through your notes (from an empty box)"],
-    [`${MOD}+↑`, "browse the peek"],
-    [`↑ / ↓`, "move through / leave the peek"],
-    [`enter`, "open the focused match"],
-    [`${MOD}+delete`, "delete the focused match"],
-    [`${MOD}+c`, "copy the focused match"],
-    [`ctrl+shift+d`, "dark / light"],
-    [`?`, "this cheatsheet"],
-  ];
-  return rowsToDl(rows);
-}
+// One set of sections, two presentations: the essentials written inline into the pad
+// on first load (#welcome), and the full summoned panel afterward (#cheatsheet via `?`).
+// Sections are grouped by what you are trying to do, not by key.
+const HELP_SECTIONS = () => [
+  {
+    title: "write",
+    lead: "Just type. Anything. Enter saves it.",
+    rows: [
+      [`enter`, "save the note"],
+      [`shift+enter`, "new line"],
+      [`/`, "menu: formatting, secrets, projects (at line start)"],
+      [`${MOD}+v`, "paste a screenshot (or drop one in)"],
+      [`${MOD}+k`, "store a secret, encrypted"],
+      [`esc`, "back to typing, closes anything open"],
+    ],
+  },
+  {
+    title: "projects · #tags",
+    lead: "A project is just a #word inside a note. Nothing to create. Write it and it exists.",
+    rows: [
+      [`#idea some text`, "this note is now in the #idea project"],
+      [`#`, "while typing: suggests tags you already use"],
+      [`#idea + enter`, "on its own: open the project (or start it, if new)"],
+      [`/project idea`, "same thing, spelled out"],
+      [`click a #tag`, "every note in that project"],
+      [`/projects`, "all your projects, most recent first"],
+      [`${MOD}+enter`, "on a project: read all its notes as one page, copy it"],
+    ],
+  },
+  {
+    title: "find",
+    lead: "Matches show above the box as you type. Dates work too: \"tomorrow\", \"next week\".",
+    rows: [
+      [`${MOD}+f`, "search"],
+      [`${MOD}+↑`, "jump into the matches"],
+      [`↑ / ↓`, "move through / leave them"],
+      [`enter`, "open the focused match"],
+      [`${MOD}+c`, "copy the focused match"],
+      [`${MOD}+delete`, "delete the focused match"],
+      [`/upcoming`, "what is coming up (dated notes ahead)"],
+    ],
+  },
+  {
+    title: "edit",
+    lead: "A note is never locked. Click it, change it, enter.",
+    rows: [
+      [`click a note`, "edit it in place"],
+      [`↑`, "from an empty box: step back through recent notes"],
+      [`clear it + enter`, "delete it"],
+      [`${MOD}+z`, "undo the last save or delete"],
+    ],
+  },
+  {
+    title: "formatting · just type it",
+    lead: "Markdown at the start of a line. Lists continue on shift+enter.",
+    rows: [
+      [`- text`, "bullet"],
+      [`1. text`, "numbered"],
+      [`- [ ] text`, "checklist, click the box to tick"],
+      [`# text`, "heading (## for smaller)"],
+      [`> text`, "quote"],
+      [`**bold**  *italic*  \`code\``, "inline"],
+      [`[text](url)`, "link (bare urls link themselves)"],
+      [`---`, "divider"],
+    ],
+  },
+  {
+    title: "app",
+    rows: [
+      [`ctrl+shift+d`, "dark / light"],
+      [`${MOD}+,`, "settings: notes folder, updates"],
+      [`?`, "this help"],
+    ],
+  },
+];
 
-// "Other types of input" are markdown you TYPE at the start of a line (no toolbar,
-// no shortcut) — this makes them discoverable. Lists auto-continue on Shift+Enter.
-function formatListHtml() {
-  const rows = [
-    [`- text`, "bullet list"],
-    [`1. text`, "numbered list"],
-    [`- [ ] text`, "checklist — click the box to tick"],
-    [`# text`, "heading"],
-    [`**text**`, "bold"],
-    [`*text*`, "italic"],
-    ["`text`", "code"],
-    [`> text`, "quote"],
-    [`[text](url)`, "link"],
-  ];
-  return rowsToDl(rows);
+function sectionHtml(s) {
+  return `<section><h4>${escapeHtml(s.title)}</h4>` +
+    (s.lead ? `<p class="lead">${escapeHtml(s.lead)}</p>` : "") +
+    rowsToDl(s.rows) + `</section>`;
 }
 function rowsToDl(rows) {
   return `<dl>` +
@@ -1760,7 +1732,8 @@ function onCheatsheetOutside(ev) {
 }
 function showCheatsheet() {
   el.cheatsheet.innerHTML =
-    `<h4>keys</h4>` + keyListHtml() + `<h4>formatting · just type it</h4>` + formatListHtml();
+    `<div class="sheet-head">help <span>esc or click outside to close</span></div>` +
+    `<div class="sheet-grid">` + HELP_SECTIONS().map(sectionHtml).join("") + `</div>`;
   el.cheatsheet.hidden = false;
   // click anywhere outside the panel to dismiss (defer so the opening keypress/click clears)
   setTimeout(() => document.addEventListener("mousedown", onCheatsheetOutside), 0);
@@ -1775,7 +1748,9 @@ function toggleCheatsheet() { el.cheatsheet.hidden ? showCheatsheet() : hideChea
 function showWelcome() {
   const hint = document.getElementById("first-hint");
   if (hint) hint.remove();
-  el.welcome.innerHTML = `<h4>keys</h4>` + keyListHtml();
+  const [write, projects] = HELP_SECTIONS();
+  el.welcome.innerHTML = sectionHtml(write) + sectionHtml(projects) +
+    `<p class="lead">press <kbd>?</kbd> any time for the rest.</p>`;
   el.welcome.hidden = false;
 }
 function dismissWelcome() {

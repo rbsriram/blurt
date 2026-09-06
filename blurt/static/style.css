@@ -156,18 +156,6 @@ body {
 }
 .tag-chip:hover { color: var(--fg); text-decoration: underline; }
 
-/* grouped stream (/group): each project is a section, its tag as a quiet header */
-.tag-group { margin: 10px 0; }
-.tag-group-head {
-  font-size: 11px;
-  color: var(--muted);
-  padding: 2px 0 4px;
-  border-bottom: 1px solid var(--faint);
-  margin-bottom: 4px;
-  cursor: pointer;
-}
-.tag-group-head:hover { color: var(--fg); }
-
 /* the "projects" card reuses the coming-up rows; the count sits faint at the right */
 .tag-count {
   margin-left: auto;
@@ -229,7 +217,7 @@ body {
 }
 #welcome[hidden] { display: none; }
 #welcome h4 {
-  margin: 0 0 12px;
+  margin: 0 0 6px;
   font-size: 12px;
   color: var(--muted);
   letter-spacing: 0.06em;
@@ -665,26 +653,33 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 25;
-  width: min(440px, calc(100vw - 40px));
-  max-height: min(72vh, calc(100vh - 56px));
+  width: min(860px, calc(100vw - 40px));
+  max-height: min(84vh, calc(100vh - 56px));
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--faint);
   border-radius: 12px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
-  padding: 22px 24px;
+  padding: 22px 28px 26px;
   font-size: 14px;
   color: var(--fg);
   animation: sheetfade 180ms ease both;
 }
 #cheatsheet[hidden] { display: none; }
 @keyframes sheetfade { from { opacity: 0; transform: translate(-50%, calc(-50% + 6px)); } }
-#cheatsheet h4 { margin: 2px 0 11px; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
-#cheatsheet h4 + dl { margin-bottom: 20px; }   /* breathing room between the two sections */
-/* a single calm column of key/description pairs, not a space-filling grid */
-#cheatsheet dl { display: grid; grid-template-columns: max-content 1fr; gap: 9px 18px; margin: 0; align-items: baseline; }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; font-size: 15px; font-weight: 600; }
+.sheet-head span { font-size: 12px; font-weight: 400; color: var(--muted); }
+/* sections flow into two columns on a wide window, one on a narrow one */
+.sheet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 22px 36px; align-items: start; }
+#cheatsheet section, #welcome section { min-width: 0; }
+#cheatsheet h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+#cheatsheet .lead, #welcome .lead { margin: 0 0 10px; font-size: 13px; color: var(--fg); opacity: 0.7; line-height: 1.45; }
+#welcome .lead:last-child { margin: 6px 0 0; }
+#welcome section + section { margin-top: 18px; }
+/* a calm column of key/description pairs */
+#cheatsheet dl { display: grid; grid-template-columns: max-content 1fr; gap: 7px 16px; margin: 0; align-items: baseline; }
 #cheatsheet dt { color: var(--accent); white-space: nowrap; }
-#cheatsheet dd { margin: 0; color: var(--fg); opacity: 0.82; }
+#cheatsheet dd { margin: 0; color: var(--fg); opacity: 0.82; line-height: 1.4; }
 kbd {
   font: inherit;
   font-size: 0.92em;
